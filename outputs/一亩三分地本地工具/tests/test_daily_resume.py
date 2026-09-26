@@ -3,7 +3,7 @@ import itertools
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +19,118 @@ from tests.test_access_recovery import SubmissionBrowser
 NOW = datetime(2026, 9, 10, 17, tzinfo=timezone.utc)
 
 
+class RandomScheduleTests(unittest.TestCase):
+    def setUp(self):
+        change = patch.object(rules, 'SCHEDULE_MODE', 'random')
+        change.start()
+        self.addCleanup(change.stop)
+
+    def test_bounded_curve_uses_los_angeles_on_both_dst_transitions(self):
+        from unittest.mock import Mock
+        for day, expected in [('2026-03-08', 18), ('2026-11-01', 19)]:
+            now = datetime.fromisoformat(day + 'T20:00:00+00:00')
+            rng = Mock()
+            rng.betavariate.return_value = 0.5
+            due = rules.draw_daily_due_at(now, rng)
+            self.assertEqual(due, now.replace(hour=expected))
+            rng.betavariate.assert_called_once_with(3, 3)
+
+    def test_persisted_plan_survives_reopen_and_concurrent_creators(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'plans.sqlite'
+            Library(path).close()
+            barrier = Barrier(2)
+            calls = []
+            def contender(value):
+                db = Library(path)
+                try:
+                    barrier.wait()
+                    def create():
+                        calls.append(value)
+                        return {'due_at': value}
+                    return db.daily_plan(123456, '2026-09-10', 'schedule', create)
+                finally:
+                    db.close()
+            with ThreadPoolExecutor(2) as workers:
+                results = list(workers.map(contender, ['one', 'two']))
+            self.assertEqual(results[0], results[1])
+            self.assertEqual(len(calls), 1)
+            db = Library(path)
+            try:
+                self.assertEqual(db.daily_plan(123456, '2026-09-10', 'schedule'), results[0])
+                self.assertIsNone(db.daily_plan(654321, '2026-09-10', 'schedule'))
+                self.assertIsNone(db.daily_plan(123456, '2026-09-11', 'schedule'))
+            finally:
+                db.close()
+
+    def test_resume_reuses_due_and_remains_offline_before_it(self):
+        from datetime import timedelta
+        with tempfile.TemporaryDirectory() as directory, patch('daily.STATE', Path(directory)), \
+                patch('daily.ACCOUNT_UID', 123456), patch('daily.datetime', wraps=datetime) as clock, \
+                patch('daily.site_day', return_value='2026-09-10'), \
+                patch('daily.Browser') as browser, patch('daily.run_daily') as run, \
+                patch('daily.draw_daily_due_at', return_value=NOW + timedelta(hours=1)) as draw:
+            clock.now.return_value = NOW
+            first = daily.resume_daily()
+            second = daily.resume_daily()
+            self.assertEqual(first['decision'], 'not_due')
+            self.assertEqual(first['due_at'], second['due_at'])
+            browser.assert_not_called()
+            clock.now.return_value = NOW + timedelta(hours=4)  # Missed window, still same site day.
+            run.return_value = {'status': 'complete', 'error': None, 'actions': []}
+            self.assertEqual(daily.resume_daily()['decision'], 'executed')
+            draw.assert_called_once()
+
+    def test_health_does_not_mark_today_incomplete_before_persisted_due(self):
+        from datetime import timedelta
+        from tests.test_daily_history import summarized_day
+        now = NOW + timedelta(minutes=20)
+        health = rules.daily_health([summarized_day('2026-09-09')], [], now.isoformat(), now,
+                                    due_at=NOW + timedelta(hours=1))
+        self.assertEqual(health['evaluated_through'], '2026-09-09')
+        self.assertEqual(health['verdict'], 'ok')
+
+
+class RecoveryBackoffTests(unittest.TestCase):
+    def test_wait_is_offline_survives_reopen_and_allows_bound_answer(self):
+        from datetime import timedelta
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            db = Library(root / daily.DATABASE_NAME)
+            db.save_daily(saved_run('failure', [], started=NOW), 123456)
+            db.close()
+            with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.draw_daily_due_at', return_value=NOW), patch('daily.Browser') as browser, \
+                    patch('daily.run_daily', return_value={'status': 'complete', 'error': None, 'actions': []}) as run:
+                clock.now.return_value = NOW + timedelta(seconds=10)
+                self.assertEqual(daily.resume_daily()['decision'], 'recovery_wait')
+                self.assertEqual(daily.resume_daily()['decision'], 'recovery_wait')
+                browser.assert_not_called()
+                run.assert_not_called()
+                self.assertEqual(daily.resume_daily('Answer', 'Synthetic question')['decision'], 'executed')
+                clock.now.return_value = NOW + timedelta(minutes=5)
+                self.assertEqual(daily.resume_daily()['decision'], 'executed')
+                self.assertEqual(run.call_count, 2)
+            db = Library(root / daily.DATABASE_NAME)
+            try:
+                self.assertIsNone(db.daily_retry_due(123456, '2026-09-11'))
+            finally:
+                db.close()
+
+    def test_backoff_caps_and_status_queries_do_not_extend_it(self):
+        from datetime import timedelta
+        records = [{**saved_run(str(i), []), 'status_only': False} for i in range(8)]
+        for count, minutes in [(1, 5), (2, 10), (3, 20), (4, 40), (5, 60), (8, 60)]:
+            due = rules.daily_retry_due(records[:count])
+            self.assertEqual(due, NOW + timedelta(minutes=minutes))
+        readonly = {**saved_run('read', [], started=NOW + timedelta(hours=1)), 'status_only': True}
+        self.assertEqual(rules.daily_retry_due([readonly, records[0]]), NOW + timedelta(minutes=5))
+        self.assertIsNone(rules.daily_retry_due([readonly]))
+
+
 def saved_run(run_id, flags, *, started=NOW):
     return {'run_id': run_id, 'started_at': started.isoformat(), 'finished_at': started.isoformat(),
             'site_day': rules.site_day(started), 'status': 'needs_attention', 'status_only': False,
@@ -26,6 +138,15 @@ def saved_run(run_id, flags, *, started=NOW):
 
 
 class DailyResumeTests(unittest.TestCase):
+    def setUp(self):
+        # Legacy fixed-time deployments remain supported; isolate these fixtures from new defaults.
+        for name, value in [('SCHEDULE_MODE', 'fixed'), ('SCHEDULE_TIME', '16:10'),
+                            ('SCHEDULE_TIMEZONE', 'Asia/Shanghai')]:
+            for module in (rules, settings):
+                change = patch.object(module, name, value, create=True)
+                change.start()
+                self.addCleanup(change.stop)
+
     def test_due_time_tracks_site_day_across_local_midnight_and_dst(self):
         cases = [('2026-09-10T07:30:00+00:00', '2026-09-10T08:10:00+00:00'),
                  ('2026-09-10T17:00:00+00:00', '2026-09-10T08:10:00+00:00'),
@@ -36,7 +157,7 @@ class DailyResumeTests(unittest.TestCase):
                 self.assertEqual(rules.daily_due_at(datetime.fromisoformat(now)), datetime.fromisoformat(due))
         self.assertEqual(settings.daily_schedule_rrule(), 'FREQ=DAILY;BYHOUR=0,4,8,12,16,20;BYMINUTE=10;BYSECOND=0')
         with tempfile.TemporaryDirectory() as directory, patch('daily.STATE', Path(directory)), \
-                patch('daily.ACCOUNT_UID', 123456), patch('daily.datetime') as clock, patch('daily.Browser') as browser:
+                patch('daily.ACCOUNT_UID', 123456), patch('daily.datetime', wraps=datetime) as clock, patch('daily.Browser') as browser:
             clock.now.return_value = datetime.fromisoformat(cases[0][0])
             result = daily.resume_daily()
             self.assertEqual(result['decision'], 'not_due')
@@ -50,7 +171,7 @@ class DailyResumeTests(unittest.TestCase):
             db.save_daily(saved_run('finished', ['checkin', 'quiz']), 123456)
             db.close()
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser') as browser, \
                     patch('sys.argv', ['cli', 'daily', '--resume']), patch('sys.stdout', new_callable=io.StringIO) as output:
                 clock.now.return_value = NOW
@@ -71,7 +192,7 @@ class DailyResumeTests(unittest.TestCase):
             db.close()
             session = SubmissionBrowser(completed=True, rewarded=True)
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), \
                     patch('daily.time.monotonic', side_effect=[0, 100]), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
@@ -92,7 +213,7 @@ class DailyResumeTests(unittest.TestCase):
             db.close()
             session = SubmissionBrowser(completed=False, rewarded=False)
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
                 clock.now.return_value = NOW
@@ -112,7 +233,7 @@ class DailyResumeTests(unittest.TestCase):
                     session.submissions = 1  # Already completed online, absent from local history.
                     failure = RuntimeError(reason) if reason == 'network_timeout' else BrowserConnectionError(reason)
                     with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                            patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                            patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                             patch('daily.Browser', side_effect=[failure, session if recovers else failure]) as browser, \
                             patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
                         clock.now.return_value = NOW
@@ -130,7 +251,7 @@ class DailyResumeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', side_effect=[
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', side_effect=[
                         '2026-09-10', '2026-09-10', '2026-09-10', '2026-09-11']), \
                     patch('daily.Browser', side_effect=RuntimeError('network_timeout')) as browser:
                 clock.now.return_value = NOW
@@ -138,7 +259,7 @@ class DailyResumeTests(unittest.TestCase):
             self.assertEqual(result['error'], 'site_day_changed')
             self.assertEqual(len(result['attempts']), 1)
             self.assertEqual(browser.call_count, 1)
-            with patch('daily.ACCOUNT_UID', 123456), patch('daily.datetime') as clock, \
+            with patch('daily.ACCOUNT_UID', 123456), patch('daily.datetime', wraps=datetime) as clock, \
                     patch('daily.Library', side_effect=OSError('synthetic private path')), patch('daily.Browser') as browser:
                 clock.now.return_value = NOW
                 failed = daily.resume_daily()
@@ -146,7 +267,7 @@ class DailyResumeTests(unittest.TestCase):
             self.assertNotIn('synthetic private path', json.dumps(failed))
             browser.assert_not_called()
 
-    def test_request_lost_in_flight_is_retried_up_to_the_attempt_limit(self):
+    def test_missing_receipt_stays_read_only_until_later_verification(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             session = SubmissionBrowser(completed=False, rewarded=False)
@@ -158,7 +279,7 @@ class DailyResumeTests(unittest.TestCase):
                 return original_account()
 
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), \
                     patch('daily.time.monotonic', side_effect=itertools.cycle([0, 100])), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
@@ -168,21 +289,19 @@ class DailyResumeTests(unittest.TestCase):
                 self.assertEqual(first['error'], 'network_timeout')
                 self.assertEqual(len(first['attempts']), 1)
                 self.assertEqual(session.submissions, 1)
-                # The site never answered the request and still reports the quiz undone, so the lost
-                # attempt is retried on later runs instead of forfeiting the site day.
-                for expected in range(2, settings.SUBMISSION_ATTEMPT_LIMIT + 1):
+                # A missing receipt is ambiguous, even if the online flag still says undone.
+                for _ in range(3):
                     later = daily.resume_daily(supplied_answer='Answer', expected_question='Synthetic question')
                     self.assertEqual(later['error'], 'quiz_submission_unconfirmed')
-                    self.assertEqual(session.submissions, expected)
+                    self.assertEqual(session.submissions, 1)
                     self.assertIsNotNone(later['history']['actions'][1]['unconfirmed_submission_run_id'])
-                spent = daily.resume_daily(supplied_answer='Answer', expected_question='Synthetic question')
-                self.assertEqual(spent['error'], 'quiz_submission_unconfirmed')
-                self.assertEqual(session.submissions, settings.SUBMISSION_ATTEMPT_LIMIT)
                 session.completed = True
                 session.rewarded = True
+                clock.now.return_value = NOW + timedelta(hours=1)
                 confirmed = daily.resume_daily()
+                self.assertEqual(confirmed['decision'], 'executed')
                 self.assertEqual(confirmed['status'], 'complete')
-                self.assertEqual(session.submissions, settings.SUBMISSION_ATTEMPT_LIMIT)
+                self.assertEqual(session.submissions, 1)
             db = Library(root / daily.DATABASE_NAME)
             action = db.daily_history(123456, '2026-09-10', 1)['days'][0]['actions'][1]
             self.assertIsNone(action['unconfirmed_submission_run_id'])
@@ -195,7 +314,7 @@ class DailyResumeTests(unittest.TestCase):
             session = SubmissionBrowser(completed=False, rewarded=False)
             session.ids['/trpc/dailyQuestion.answer'] = 'synthetic-response'
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), patch('daily.time.monotonic', return_value=0), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
                 clock.now.return_value = NOW
@@ -205,6 +324,7 @@ class DailyResumeTests(unittest.TestCase):
                 self.assertEqual(second['error'], 'quiz_submission_unconfirmed')
                 self.assertEqual(session.submissions, 1)
                 session.rewarded = True
+                clock.now.return_value = NOW + timedelta(hours=1)
                 rewarded = daily.resume_daily()
                 self.assertTrue(rewarded['attempts'][0]['reward_verified']['quiz'])
                 self.assertNotEqual(rewarded['status'], 'complete')
@@ -245,7 +365,7 @@ class DailyResumeTests(unittest.TestCase):
                                         'response_seen': True}]}, 123456)
             db.close()
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), \
                     patch('daily.time.monotonic', side_effect=itertools.cycle([0, 100])), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
@@ -271,7 +391,7 @@ class DailyResumeTests(unittest.TestCase):
                 original_click(text)
 
             with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                    patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                    patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                     patch('daily.Browser', return_value=session), \
                     patch('daily.time.monotonic', side_effect=[0, 100]), \
                     patch('tests.test_access_recovery.time.time', return_value=NOW.timestamp()):
@@ -304,7 +424,7 @@ class DailyResumeTests(unittest.TestCase):
                     return receipts[:1]
 
                 with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), \
-                        patch('daily.datetime') as clock, patch('daily.site_day', return_value='2026-09-10'), \
+                        patch('daily.datetime', wraps=datetime) as clock, patch('daily.site_day', return_value='2026-09-10'), \
                         patch('daily.Browser', return_value=session), patch('daily.time.monotonic', return_value=0), \
                         patch.object(session, 'credit_logs', side_effect=read_receipts):
                     clock.now.return_value = NOW

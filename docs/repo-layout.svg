@@ -64,7 +64,7 @@ text{fill:#e6edf3}.s{fill:#a3adb8}.xs{fill:#8b949e}.mono{fill:#a3adb8}.w{fill:#f
 <text x="138" y="303" class="s" style="font-size:13px">16 个 Python 模块 · 题库 · 心情短句 · 依赖清单</text>
 <path d="M92,308 L92,340 L104,340" class="line soft"/>
 <g transform="translate(108.0,328.0) scale(0.833)" class="ic ic-gray"><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/></g>
-<text x="138" y="343" class="s" style="font-size:13px">tests/ 36 个测试文件 · 离线阅读器 · 入口脚本 · 使用说明</text>
+<text x="138" y="343" class="s" style="font-size:13px">tests/ 测试用例 · 离线阅读器 · 入口脚本 · 使用说明</text>
 <path d="M62,348 L62,380 L74,380" class="line soft"/>
 <g transform="translate(78.0,368.0) scale(0.833)" class="ic ic-blue"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></g>
 <text x="108" y="383" class="mono" style="font-size:13px">work/</text>

@@ -7,7 +7,7 @@ import re
 import shutil
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 from uuid import uuid4
@@ -25,7 +25,7 @@ from contracts import (RunStatus, ContentStatus, CollectionStatus, collection_st
                        format_error, validate_record, daily_history_record, summarize_daily_history,
                        record_search_text, record_matches, validate_date_bound,
                        TaskState, TaskControl, PauseRequested, TASK_ACTIVE_STATES, task_view, MediaOutcome)
-from rules import site_day, daily_health, build_outline
+from rules import site_day, daily_health, build_outline, daily_retry_due
 from extract import (parse_listing, parse_thread, parse_thread_reference, parse_search,
                      parse_search_reference, parse_board, parse_board_reference,
                      parse_profile, parse_profile_reference, parse_profile_threads, parse_favorites)
@@ -74,6 +74,8 @@ class Library:
                 started_at TEXT, data TEXT, PRIMARY KEY(account_uid,run_id));
             CREATE INDEX IF NOT EXISTS daily_runs_by_day ON daily_runs(account_uid,site_day,started_at);
             CREATE TABLE IF NOT EXISTS scheduler_heartbeat(account_uid INTEGER PRIMARY KEY, fired_at TEXT);
+            CREATE TABLE IF NOT EXISTS daily_plans(account_uid INTEGER, site_day TEXT, kind TEXT, data TEXT,
+                PRIMARY KEY(account_uid,site_day,kind));
             CREATE TABLE IF NOT EXISTS outlines(tid INTEGER, content_hash TEXT, data TEXT, built_at TEXT,
                 PRIMARY KEY(tid, content_hash));
             CREATE TABLE IF NOT EXISTS tasks(task_id TEXT PRIMARY KEY, account_uid INTEGER, kind TEXT, params TEXT,
@@ -88,15 +90,34 @@ class Library:
     def close(self):
         self.db.close()
 
-    def save_daily(self, result, account_uid):
+    def daily_plan(self, account_uid, day, kind, create=None):
+        """Read or atomically create a daily choice. The factory must be local and quick, never network I/O."""
+        def read():
+            row = self.db.execute('SELECT data FROM daily_plans WHERE account_uid=? AND site_day=? AND kind=?',
+                                  (account_uid, day, kind)).fetchone()
+            return json.loads(row[0]) if row else None
+        if create is None:
+            return read()
+        with self.db:
+            self.db.execute('BEGIN IMMEDIATE')
+            value = read()
+            if value is None:
+                value = create()
+                self.db.execute('INSERT INTO daily_plans VALUES(?,?,?,?)',
+                                (account_uid, day, kind, json.dumps(value, ensure_ascii=False)))
+        return value
+
+    def save_daily(self, result, account_uid, *, checkpoint=False):
         started = datetime.fromisoformat(result['started_at'])
         if started.tzinfo is None or result['site_day'] != site_day(started) or not result['run_id']:
             raise ValueError('invalid_daily_history_record')
         record = daily_history_record(result)
         with self.db:
-            self.db.execute('INSERT INTO daily_runs VALUES(?,?,?,?,?) ON CONFLICT(account_uid,run_id) DO NOTHING',
+            self.db.execute('INSERT INTO daily_runs VALUES(?,?,?,?,?) ON CONFLICT(account_uid,run_id) '
+                'DO UPDATE SET data=excluded.data WHERE ? AND daily_runs.site_day=excluded.site_day '
+                'AND daily_runs.started_at=excluded.started_at',
                 (account_uid, record['run_id'], record['site_day'], started.astimezone(timezone.utc).isoformat(),
-                 json.dumps(record, ensure_ascii=False)))
+                 json.dumps(record, ensure_ascii=False), checkpoint))
 
     def save_outline(self, outline):
         """Outlines live beside the record, never inside it; one row per content version (issue #23)."""
@@ -119,6 +140,11 @@ class Library:
         with self.db:
             self.db.execute('INSERT INTO scheduler_heartbeat VALUES(?,?) ON CONFLICT(account_uid) '
                             'DO UPDATE SET fired_at=excluded.fired_at', (account_uid, fired_at))
+
+    def daily_retry_due(self, account_uid, day):
+        rows = self.db.execute('SELECT data FROM daily_runs WHERE account_uid=? AND site_day=? '
+                               'ORDER BY started_at DESC,run_id DESC', (account_uid, day))
+        return daily_retry_due(json.loads(row[0]) for row in rows)
 
     def last_heartbeat(self, account_uid):
         row = self.db.execute('SELECT fired_at FROM scheduler_heartbeat WHERE account_uid=?',
@@ -258,18 +284,15 @@ class Library:
                             (tid, entry['url'], entry.get('pid'), entry.get('kind'), entry.get('name'), entry.get('sha256'),
                              entry.get('path'), entry.get('bytes'), entry.get('mime'), entry.get('fetched_at'), entry['outcome'], entry.get('error')))
 
-    def recent_checkins(self, account_uid, days):
-        """What the account's check-ins said over the last `days` site days, newest first: the mood
-        and phrase each submitted run recorded, so a new day can continue a streak and skip repeats."""
-        rows = self.db.execute('SELECT data FROM daily_runs WHERE account_uid=? ORDER BY site_day DESC, started_at DESC',
-                               (account_uid,)).fetchall()
-        recent, seen_days = [], []
+    def recent_checkins(self, account_uid, days, *, on=None):
+        """Previous calendar days plus today for recovery; missing days never stretch the window."""
+        anchor = on or site_day()
+        cutoff = (date.fromisoformat(anchor) - timedelta(days=days)).isoformat()
+        rows = self.db.execute('SELECT data FROM daily_runs WHERE account_uid=? AND site_day>=? AND site_day<=? '
+                               'ORDER BY site_day DESC, started_at DESC', (account_uid, cutoff, anchor)).fetchall()
+        recent = []
         for row in rows:
             record = json.loads(row[0])
-            if record['site_day'] not in seen_days:
-                seen_days.append(record['site_day'])
-            if len(seen_days) > days:
-                break
             for action in record.get('actions', []):
                 if action.get('action') == 'checkin' and action.get('mood'):
                     recent.append({'site_day': record['site_day'], 'mood': action['mood'], 'phrase': action.get('phrase')})
@@ -289,10 +312,13 @@ class Library:
             all_rows = self.db.execute('SELECT data FROM daily_runs WHERE account_uid=? AND site_day IN ('
                 + ','.join('?' for _ in dates) + ') ORDER BY started_at,run_id', [account_uid, *dates])
             days = summarize_daily_history(json.loads(row[0]) for row in all_rows)
+        now = datetime.now(timezone.utc)
+        plan = self.daily_plan(account_uid, site_day(now), 'schedule') if date is None else None
         return {'status': RunStatus.COMPLETE, 'runs': records, 'days': days,
                 # A single-date query is a lookup, not a trend: only the open window earns a verdict.
                 'health': None if date is not None else daily_health(
-                    days, records, self.last_heartbeat(account_uid)),
+                    days, records, self.last_heartbeat(account_uid), now,
+                    due_at=datetime.fromisoformat(plan['due_at']) if plan else None),
                 'truncated': len(rows) > limit, 'error': None}
 
     def _write_record(self, record):

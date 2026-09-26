@@ -6,9 +6,10 @@ from pathlib import Path
 from random import SystemRandom
 from zoneinfo import ZoneInfo
 from settings import (SITE_TIMEZONE, SCHEDULE_TIMEZONE, SCHEDULE_TIME, SCHEDULE_RECOVERY_HOURS,
+                      SCHEDULE_MODE, SCHEDULE_WINDOW_START, SCHEDULE_WINDOW_END, SCHEDULE_CURVE,
                       CHECKIN_MOOD_WEIGHTS, CHECKIN_MOOD_PERSISTENCE, CHECKIN_MOOD_DEFAULT, MOOD_PHRASE_MAX_LENGTH,
-                      HEALTH_ALERT_DAYS, HEALTH_STALE_RUNS)
-from contracts import (ACTIONS, HealthVerdict, HealthReason, day_complete, Attribution, Certainty, ContentStatus,
+                      HEALTH_ALERT_DAYS, HEALTH_STALE_RUNS, QUIZ_GAP_SECONDS, DAILY_RECOVERY_MINUTES)
+from contracts import (ACTIONS, HealthVerdict, HealthReason, day_complete, Attribution, Certainty, ContentStatus, RunStatus,
                        ROUND_PATTERNS, QUESTION_CUES, SPECULATION_CUES, NOISE_CUES, RESTRICTED_MARKER)
 
 LA = ZoneInfo(SITE_TIMEZONE)
@@ -31,11 +32,46 @@ def site_day(now=None):
 
 
 def daily_due_at(now):
-    """Anchor the site's current day to its scheduled local date, not the PC's today."""
+    """Deterministic deadline: random plans without a stored draw are due at window end."""
     midnight = datetime.fromisoformat(site_day(now)).replace(tzinfo=LA)
+    if SCHEDULE_MODE == 'random':
+        return midnight.replace(hour=SCHEDULE_WINDOW_END).astimezone(timezone.utc)
     local = midnight.astimezone(ZoneInfo(SCHEDULE_TIMEZONE))
     hour, minute = map(int, SCHEDULE_TIME.split(':'))
     return local.replace(hour=hour, minute=minute, second=0, microsecond=0).astimezone(timezone.utc)
+
+
+def draw_daily_due_at(now, rng=None):
+    if SCHEDULE_MODE == 'fixed':
+        return daily_due_at(now)
+    rng = rng or SystemRandom()
+    start = datetime.fromisoformat(site_day(now)).replace(tzinfo=LA, hour=SCHEDULE_WINDOW_START)
+    minutes = (SCHEDULE_WINDOW_END - SCHEDULE_WINDOW_START) * 60
+    # Minute resolution matches the lightweight local scheduler, with the upper endpoint excluded.
+    offset = min(minutes - 1, int(rng.betavariate(*SCHEDULE_CURVE) * minutes))
+    return (start + timedelta(minutes=offset)).astimezone(timezone.utc)
+
+
+def make_quiz_gap(now, rng=None):
+    delay = (rng or SystemRandom()).uniform(*QUIZ_GAP_SECONDS)
+    return {'observed_at': now.isoformat(), 'delay_seconds': delay,
+            'ready_at': (now + timedelta(seconds=delay)).isoformat()}
+
+
+def daily_retry_due(records):
+    """Newest first, current site day only. Persisted finish times survive scheduler restarts."""
+    failed = []
+    for record in records:
+        if record.get('status_only') is True:
+            continue
+        if record['status'] == RunStatus.COMPLETE:
+            break
+        failed.append(datetime.fromisoformat(record['finished_at']))
+    if not failed:
+        return None
+    base, maximum = DAILY_RECOVERY_MINUTES
+    minutes = min(maximum, base * 2 ** min(len(failed) - 1, 8))
+    return max(failed) + timedelta(minutes=minutes)
 
 
 def verify_reward(uid, action, logs, now=None):
@@ -53,15 +89,15 @@ def verify_reward(uid, action, logs, now=None):
     return False
 
 
-def last_due_site_day(now):
+def last_due_site_day(now, due_at=None):
     """The most recent site day that should already be finished; today only counts once it is due."""
     today = site_day(now)
-    if now >= daily_due_at(now):
+    if now >= (due_at or daily_due_at(now)):
         return today
     return (date.fromisoformat(today) - timedelta(days=1)).isoformat()
 
 
-def daily_health(days, runs, heartbeat_at=None, now=None):
+def daily_health(days, runs, heartbeat_at=None, now=None, *, due_at=None):
     """One deterministic verdict over stored evidence, so a scheduler never has to judge a trend itself.
 
     A site day with no rows counts as incomplete: a dead scheduler leaves silence, not a failure row.
@@ -69,7 +105,7 @@ def daily_health(days, runs, heartbeat_at=None, now=None):
     one run and every later invocation exits quietly, so run age measures work done, not firing.
     """
     now = now or datetime.now(timezone.utc)
-    evaluated_through = last_due_site_day(now)
+    evaluated_through = last_due_site_day(now, due_at)
     known = {day['site_day']: day for day in days}
     fired = [datetime.fromisoformat(run['started_at']) for run in runs if run.get('started_at')]
     if heartbeat_at:
@@ -100,12 +136,10 @@ def daily_health(days, runs, heartbeat_at=None, now=None):
 
 
 def choose_mood(previous=None, rng=None):
-    """Pick a mood the way a member would, not the way a fair die would.
+    """Use configured weights and an optional yesterday-only continuation probability.
 
-    Uniform independent draws are themselves a signature: over a calendar year every mood turns up
-    equally often and no mood ever runs two days, which no real member looks like. So the marginal
-    distribution is skewed toward mundane days, and a run continues with CHECKIN_MOOD_PERSISTENCE.
-    Streaks need yesterday's mood; pass None when it is unknown and only the weights apply.
+    These are preference weights, not measured human behavior or an anti-detection guarantee.
+    The weighted draw itself can also repeat yesterday's mood.
     """
     rng = rng or SystemRandom()
     if previous in CHECKIN_MOOD_WEIGHTS and rng.random() < CHECKIN_MOOD_PERSISTENCE:
@@ -140,18 +174,13 @@ def load_mood_phrases(path):
 
 
 def choose_phrase(mood, pool, recent=(), rng=None):
-    """One line from the chosen mood's group, avoiding what the account said recently.
-
-    The default mood publishes nothing, so it gets no phrase. When every line of a group was used
-    within the recent window the whole group is eligible again rather than falling back to silence or
-    to another mood's tone.
-    """
+    """Avoid recent phrases; the default mood and an exhausted group stay silent."""
     if mood == CHECKIN_MOOD_DEFAULT:
         return None
     rng = rng or SystemRandom()
     group = pool[mood]
     fresh = [phrase for phrase in group if phrase not in set(recent)]
-    return rng.choice(fresh or group)
+    return rng.choice(fresh) if fresh else None
 
 
 def _lines(text):

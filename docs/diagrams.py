@@ -433,7 +433,7 @@ def credit_log(c: Canvas):
 @diagram('overview', 960, 480, '总览：一次自动运行经过的八步')
 def overview(c: Canvas):
     row1 = [
-        {'title': '到点了，系统叫醒它', 'icon': 'alarm', 'body': ['电脑自带的定时任务，每 10 分钟一次']},
+        {'title': '到点了，系统叫醒它', 'icon': 'alarm', 'body': ['电脑自带的定时任务，每分钟检查一次']},
         {'title': '先看看今天做过没', 'icon': 'search', 'body': ['只查本机记录，不开浏览器']},
         {'title': '打开专用 Chrome', 'icon': 'monitor', 'body': ['和你平时用的浏览器互不干扰']},
         {'title': '自动签到', 'icon': 'check', 'body': ['选一个心情，点「提交签到」']},
@@ -454,7 +454,7 @@ def overview(c: Canvas):
     x5 = 24 + w / 2
     c.arrow([(x4, 24 + h + 2), (x4, 228), (x5, 228), (x5, 244)])
     step_row(c, 246, row2, w=w, gap=gap, h=h, start=5)
-    c.note(24, 408, 912, '出错了会换一个新的 Chrome 再试一次；之后每 10 分钟还会再来，直到当天两项都确认到账。已经确认到账的，不会重复做。',
+    c.note(24, 408, 912, '暂时错误可重开一次 Chrome；仍失败则按 5–60 分钟退避。已确认到账或提交结果待确认的动作，不会盲目重交。',
            'gray', 'refresh')
 
 
@@ -484,7 +484,7 @@ def checkin_flow(c: Canvas):
         {'title': '确认大米到账', 'icon': 'coins', 'body': ['积分页里有「签到奖励 +1」才算成功']},
     ]
     step_row(c, 24, steps, h=140)
-    c.note(24, 186, 912, '随机心情默认开启：每天会以你的名义在主页发一句话。不想要，在账号配置里关掉，之后固定选「没心情」、什么都不写。',
+    c.note(24, 186, 912, '随机心情默认开启，短句可能发布到主页；候选用尽或选择「没心情」时留空。账号配置可关闭短句，使用「没心情」。',
            'amber', 'meh')
 
 
@@ -654,7 +654,7 @@ def retry_flow(c: Canvas):
               ('秒', '提交后等网站回执', '最多等 45 秒；快超时时自动再试一次人机验证'),
               ('分钟', '一次运行有时限', '最多 15 分钟，超时就从外部关掉 Chrome，记录照样保存'),
               ('分钟', '同一次触发内重来', '网络、验证、浏览器断开这类错误，换一个新 Chrome 再跑一次；做过的不重做'),
-              ('小时', '每 10 分钟再来', '没到点、已完成就安静退出；一天还有 6 个恢复时点，重复触发是安全的'),
+              ('分钟至小时', '失败后逐步退避', '每分钟只检查本机；失败后等待 5、10、20、40、60 分钟，等待期不联网'),
               ('天', '独立的健康观察者', '只看本机记录，不开浏览器；连续 2 天没完成或 8 小时没心跳，就提醒你')]
     c.path('M52,30 L52,470', 'line soft')
     for i, (scale, t, b) in enumerate(layers):
@@ -671,9 +671,9 @@ def retry_flow(c: Canvas):
 
 @diagram('retry-timeline', 960, 340, '一个坏日子的接力')
 def retry_timeline(c: Canvas):
-    lanes = [('同一次触发内', '几分钟内', [('16:10 触发', 'gray', 'alarm'), ('签到 ✓', 'green'), ('答题 ✗ 网络超时', 'red'),
+    lanes = [('同一次触发内', '几分钟内', [('到期触发', 'gray', 'alarm'), ('签到 ✓', 'green'), ('答题 ✗ 网络超时', 'red'),
                                        ('换新 Chrome 重跑', 'blue', 'refresh'), ('答题 ✓ 到账 ✓', 'green'), ('圆满', 'green', 'check')]),
-             ('下一次计划', '10 分钟后', [('重跑也失败', 'red'), ('16:20 再触发', 'gray', 'alarm'), ('签到已确认，只补答题', 'blue'),
+             ('下一次计划', '退避结束后', [('重跑也失败', 'red'), ('到恢复时间再触发', 'gray', 'alarm'), ('签到已确认，只补答题', 'blue'),
                                      ('答题 ✓', 'green'), ('圆满', 'green', 'check')]),
              ('第二天', '独立的观察者', [('整天都失败', 'red'), ('观察者发现连续没完成', 'amber', 'eye'), ('提醒你', 'amber', 'bell')])]
     for i, (t, sub, items) in enumerate(lanes):
@@ -693,21 +693,21 @@ def lost_submission(c: Canvas):
     step_row(c, 24, steps, w=292, gap=18, h=84, number=False)
     c.arrow([(790, 110), (790, 136)])
     c.rect(24, 138, 912, 34, 'c-blue', 17)
-    c.text(480, 160, '下一次运行（10 分钟后）：先看网站怎么说，再决定要不要再提交', 'xs t-blue', 'middle')
+    c.text(480, 160, '恢复等待结束后：先核验网站状态，待确认提交不盲目重交', 'xs t-blue', 'middle')
     outcomes = [('网站说已完成或已到账', ['上次其实成功了 → 不再提交，只补核对'], 'green', 'check-circle'),
-                ('网站说没完成，且从没回应过', ['大概率没送到 → 再提交一次，一天最多 3 次'], 'blue', 'refresh'),
-                ('网站说没完成，但回应过一次', ['网站处理过了 → 绝不重交，只查回执，等人看'], 'red', 'x-circle')]
+                ('网站说没完成，且从没回应过', ['结果未知 → 保留记录，只核验不重交'], 'blue', 'refresh'),
+                ('网站说没完成，但回应过一次', ['网站处理过了 → 保留待确认状态，只核验'], 'red', 'x-circle')]
     for i, (t, b, tone, ic) in enumerate(outcomes):
         x = 24 + i * 310
         c.arrow([(x + 146, 174), (x + 146, 194)])
         c.card(x, 196, 292, 116, t, b, tone, icon=ic)
-    c.note(24, 334, 912, '重复提交可能被网站当成异常操作，不提交又会断签。所以规则是：有过回应就不重交；没回应最多补 3 次，每次都先查再交。',
+    c.note(24, 334, 912, '点击前先保存意图。即使进程中断，恢复时也先核验；只有明确未点击才允许再次提交。',
            'gray', 'help')
 
 
 @diagram('health-watch', 960, 300, '健康观察者：第二双眼睛')
 def health_watch(c: Canvas):
-    c.card(24, 24, 330, 150, '主计划：每 10 分钟一次', ['该跑就跑，不该跑就退出；每次都在本机记一次心跳',
+    c.card(24, 24, 330, 150, '主计划：每分钟一次', ['该跑就跑，不该跑就退出；每次都在本机记一次心跳',
                                               '盲点：定时任务坏了、电脑没开时，它根本不会被叫醒，也就不会报错'], 'gray', icon='alarm')
     c.rect(400, 64, 160, 70, 'c-gray')
     c.icon('database', 468, 76, 24, 'blue')
@@ -741,21 +741,21 @@ def _axis(c: Canvas, x0, x1, y, labels, label_y, minor=True):
 @diagram('schedule-flow', 960, 300, '调度：一天的时间线')
 def schedule_flow(c: Canvas):
     x0, x1, y = 64, 896, 124
-    c.text(24, 40, '一天的时间线（默认计划时间 16:10，按北京时间；时间和时区都可以改）', 'h')
+    c.text(24, 40, '一天的时间线（洛杉矶时间，每日 10:00–12:00 随机抽取一次）', 'h')
     _axis(c, x0, x1, y, ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'], 150)
     span = x1 - x0
-    for hour in range(0, 24, 4):
-        x = x0 + span * (hour + 10 / 60) / 24
+    for hour in (10, 11, 12):
+        x = x0 + span * hour / 24
         c.path(f'M{x:.1f},{y - 7} L{x + 6:.1f},{y} L{x:.1f},{y + 7} L{x - 6:.1f},{y} Z', 'f-amber')
-    px = x0 + span * (16 + 10 / 60) / 24
+    px = x0 + span * 11 / 24
     c.path(f'M{px:.1f},{y - 44} L{px:.1f},{y + 8}', 'ar blue')
-    c.text(px, y - 52, '计划时间 16:10', 'h t-blue', 'middle')
+    c.text(px, y - 52, '10–12 点内抽取', 'h t-blue', 'middle')
     c.text(x0 + (px - x0) / 2, 178, '没到点：直接退出，不开浏览器', 'xs', 'middle')
     c.text(px + (x1 - px) / 2, 178, '到点后执行；做完就是「今天已完成」', 'xs', 'middle')
     cx = 24
-    cx += c.chip(cx, 200, '小刻度 = 每 10 分钟醒来看一眼', 'gray') + 10
-    cx += c.chip(cx, 200, '◆ 恢复时点：每 4 小时一个，给按固定时间触发的定时任务用', 'amber') + 10
-    c.note(24, 238, 912, '电脑睡着错过的，醒来后下一次补上，只补今天不补过去。每次醒来都记一次心跳。不要给同一个账号配两个定时任务。', 'gray', 'moon')
+    cx += c.chip(cx, 200, '目标时间保存后不再重抽', 'gray') + 10
+    cx += c.chip(cx, 200, '◆ 操作系统每分钟调用；未到点离线退出', 'amber') + 10
+    c.note(24, 238, 912, '电脑睡着错过的，醒来后下一次补上，只补今天不补过去。每次醒来都记一次心跳。同一账号只配一个每日执行计划。', 'gray', 'moon')
 
 
 @diagram('site-day', 960, 342, '网站的一天按洛杉矶时间算')
@@ -773,9 +773,7 @@ def site_day(c: Canvas):
     c.text(bx - 8, 60, '网站的新一天从这里开始', 'xs t-amber', 'end')
     c.text(24, 252, '洛杉矶时间（网站算「一天」的依据）', 'h')
     _axis(c, x0, x1, 206, ['09:00', '13:00', '17:00', '21:00', '01:00', '05:00', '09:00'], 226, minor=False)
-    px = x0 + span * (16 + 10 / 60) / 24
-    c.path(f'M{px:.1f},160 L{px:.1f},138', 'ar blue')
-    c.text(px + 8, 172, '计划 16:10：刚翻到「今天」就签，留足一整天补救', 'xs t-blue')
+    c.text(24, 172, '随机计划：洛杉矶 10:00–12:00，与站点日期使用同一时区', 'xs t-blue')
     c.text(24, 274, '洛杉矶 00:00 = 北京 15:00（夏令时）或 16:00（冬令时）', 'xs')
     c.note(24, 290, 912, '奖励记录的时间也折算成洛杉矶日期再比较。你在美国、在国内、出差、夏令时切换，判断都一致，因为从不看电脑的本地日期。',
            'gray', 'globe')
@@ -816,7 +814,7 @@ def install_flow(c: Canvas):
             {'title': '配账号、存密码', 'icon': 'key', 'body': ['用户名和 uid 写文件，密码交给系统保管']}]
     row2 = [{'title': '登录一次', 'icon': 'user-check', 'body': ['用保管的密码建立登录']},
             {'title': '手动跑一次', 'icon': 'play', 'body': ['看到「圆满完成」；题库没题就补一次']},
-            {'title': '配每日计划', 'icon': 'alarm', 'body': ['每 10 分钟一次，从此不用管']}]
+            {'title': '配每日计划', 'icon': 'alarm', 'body': ['每分钟检查一次；异常由健康观察报告']}]
     w, gap, h = 213, 18, 140
     step_row(c, 24, row1, w=w, gap=gap, h=h)
     x4 = 24 + 3 * (w + gap) + w / 2
@@ -847,7 +845,7 @@ def _bands(c: Canvas, y, bands, label_w=150, mono=False, gap=10):
     return y
 
 
-@diagram('tech-stack', 960, 440, '技术栈一张图')
+@diagram('tech-stack', 960, 480, '技术栈一张图')
 def tech_stack(c: Canvas):
     y = _bands(c, 24, [
         ('入口', ['命令行：运行.sh / 运行.cmd', 'MCP 服务：mcp_server.py（给 Claude Code、Codex 用）', '软件包：pip / uvx 装的 1point3acres-toolkit'], 'gray'),
@@ -855,7 +853,7 @@ def tech_stack(c: Canvas):
                 'rapidocr-onnxruntime', 'tzdata'], 'gray'),
         ('浏览器', ['本机安装的 Chrome', '专用配置目录', 'CDP 协议驱动', '新版接口 tRPC · 老版页面 Discuz'], 'gray'),
         ('存储与凭据', ['SQLite 数据库', '几个 JSON 文件', 'macOS 钥匙串', 'Windows DPAPI', '全部在 work/ 里'], 'gray'),
-        ('系统与质量', ['macOS launchd / Windows 任务计划程序', 'unittest：36 个文件、425 个用例', 'GitHub Actions：Ubuntu · Windows · macOS',
+        ('系统与质量', ['macOS launchd / Windows 任务计划程序', 'unittest：用例数见当次检查报告', 'GitHub Actions：Ubuntu · Windows · macOS',
                    'architecture.json 白名单 + AST 扫描'], 'gray'),
     ])
     c.text(24, y + 14, '依赖版本全部锁死在 requirements.txt，检查命令会核对已安装版本和清单一致。', 'xs')
@@ -884,7 +882,7 @@ def repo_layout(c: Canvas):
             (1, 'folder', '.github/', 'CI 流水线'),
             (1, 'folder', 'outputs/一亩三分地本地工具/', '全部代码都在这一个目录里'),
             (2, 'list', '16 个 Python 模块 · 题库 · 心情短句 · 依赖清单', ''),
-            (2, 'list', 'tests/ 36 个测试文件 · 离线阅读器 · 入口脚本 · 使用说明', ''),
+            (2, 'list', 'tests/ 测试用例 · 离线阅读器 · 入口脚本 · 使用说明', ''),
             (1, 'folder', 'work/', '不入库：每台电脑自己的 Python 环境、账号、数据库、专用 Chrome')]
     c.rect(24, 24, 912, 380, 'c-gray')
     for i, (depth, ic, name, desc) in enumerate(rows):
@@ -901,7 +899,7 @@ def repo_layout(c: Canvas):
 @diagram('ci-flow', 960, 270, 'CI 流水线')
 def ci_flow(c: Canvas):
     steps = [{'title': '静态检查', 'icon': 'list-check', 'body': ['Ubuntu，几秒钟', '依赖白名单、文件清单、文档链接、密钥扫描；构建一次软件包']},
-             {'title': '单元测试', 'icon': 'cpu', 'body': ['Windows 2022 / 2025、macOS 15', '425 个用例，含真实钥匙串往返']},
+             {'title': '单元测试', 'icon': 'cpu', 'body': ['Windows 2022 / 2025、macOS 15', '用例数见报告，含真实钥匙串往返']},
              {'title': '集成测试', 'icon': 'monitor', 'body': ['Windows 2025、macOS 15', '真实起 MCP 服务、真实开 Chrome；不登录不签到']},
              {'title': '汇总', 'icon': 'check-circle', 'body': ['三个阶段全绿才算通过']}]
     step_row(c, 24, steps, h=158)
@@ -929,7 +927,7 @@ def commands_map(c: Canvas):
 @diagram('mcp-flow', 960, 250, '接给 AI 助手：MCP 是怎么接的')
 def mcp_flow(c: Canvas):
     cards = [('bot', 'AI 助手', ['Claude Code、Codex，或任何支持本地 MCP 的客户端']),
-             ('plug', '工具的 MCP 服务', ['32 个工具，每个都标明只读还是可写；多传的参数直接拒绝']),
+             ('plug', '工具的 MCP 服务', ['工具清单统一登记，每个标明只读还是可写；多传的参数直接拒绝']),
              ('layers', '同一套函数', ['和命令行完全相同：同一份登录、同一个数据库、同样的安全边界'])]
     for i, (ic, t, b) in enumerate(cards):
         c.card(24 + i * 326, 24, 260, 120, t, b, 'blue' if i == 1 else 'gray', icon=ic)

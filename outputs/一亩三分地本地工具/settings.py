@@ -46,8 +46,8 @@ CHROME_BUNDLE_ID = 'com.google.Chrome'
 CREDENTIAL_SERVICE = '1point3acres-toolkit'
 ACCOUNT_FILE = STATE / 'account.json'
 LEARNED_ANSWERS_NAME = 'learned-answers.json'
-SCHEDULE_KEYS = {'schedule_time', 'schedule_timezone'}
-# The one opt-in that makes the daily check-in speak in the member's name; absent means off.
+SCHEDULE_KEYS = {'schedule_time', 'schedule_timezone', 'schedule_mode'}
+# Controls public check-in phrases; absent uses mood_random_enabled's default.
 MOOD_RANDOM_KEY = 'checkin_mood_random'
 OPTIONAL_KEYS = SCHEDULE_KEYS | {MOOD_RANDOM_KEY}
 
@@ -83,6 +83,15 @@ def load_schedule(overrides, default_time, default_zone):
 
 
 USERNAME, ACCOUNT_UID, _SCHEDULE = load_identity(ACCOUNT_FILE)
+
+
+def config_matches_disk():
+    try:
+        return load_identity(ACCOUNT_FILE) == (USERNAME, ACCOUNT_UID, _SCHEDULE)
+    except RuntimeError:
+        return False
+
+
 SITE = 'https://www.1point3acres.com'
 SITE_HOST = 'www.1point3acres.com'
 AUTH_HOST = 'auth.1point3acres.com'
@@ -133,7 +142,20 @@ WINDOW_ON_SCREEN = (120, 80)
 SITE_TIMEZONE = 'America/Los_Angeles'
 # Defaults only: a machine overrides these in account.json instead of editing tracked source (#65).
 SCHEDULE_TIME, SCHEDULE_TIMEZONE = load_schedule(_SCHEDULE, '16:10', 'Asia/Shanghai')
+def load_schedule_mode(overrides):
+    mode = overrides.get('schedule_mode', 'fixed' if 'schedule_time' in overrides else 'random')
+    if mode not in ('fixed', 'random'):
+        raise RuntimeError('invalid_local_schedule_config')
+    return mode
+
+
+SCHEDULE_MODE = load_schedule_mode(_SCHEDULE)
+# Random plans always follow the site clock, including DST; fixed legacy overrides retain their clock.
+SCHEDULE_WINDOW_START = 10
+SCHEDULE_WINDOW_END = 12
+SCHEDULE_CURVE = (3, 3)
 SCHEDULE_RECOVERY_HOURS = 4
+SCHEDULE_POLL_SECONDS = 60
 HEALTH_ALERT_DAYS = 2
 HEALTH_STALE_RUNS = 2
 # The ten the site actually offers, read off the check-in page rather than copied from a description.
@@ -156,6 +178,8 @@ MOOD_PHRASES_FILE = ROOT / 'mood-phrases.json'
 MOOD_PHRASE_MAX_LENGTH = 60
 MOOD_PHRASE_RECENT_DAYS = 30
 DAILY_RETRY_LIMIT = 1
+DAILY_RECOVERY_MINUTES = (5, 60)
+QUIZ_GAP_SECONDS = (30, 70)
 # One whole daily run in one Chrome. Healthy runs take minutes; past this the run is cut off with
 # daily_run_timeout, its history is still saved, and resume_daily starts a fresh Chrome once.
 DAILY_RUN_TIMEOUT = 900
@@ -186,7 +210,6 @@ REQUEST_TIMEOUT_MS = 20000
 READ_RETRY_LIMIT = 1
 READ_RETRY_DELAY = 1
 SUBMISSION_TIMEOUT = 45
-SUBMISSION_ATTEMPT_LIMIT = 3
 # One CDP round trip. It must exceed the longest in-page abort (UPLOAD_TIMEOUT_MS): a healthy long call is ended
 # by the page's own timer, so this bound only catches a link that died (sleep, Chrome gone) mid-command.
 CDP_CALL_TIMEOUT = 150
@@ -221,6 +244,8 @@ def mcp_config():
 
 
 def daily_schedule_rrule():
+    if SCHEDULE_MODE == 'random':
+        return f'FREQ=MINUTELY;INTERVAL={SCHEDULE_POLL_SECONDS // 60}'
     hour, minute = map(int, SCHEDULE_TIME.split(':'))
     hours = sorted({(hour + offset) % 24 for offset in range(0, 24, SCHEDULE_RECOVERY_HOURS)})
     return 'FREQ=DAILY;BYHOUR=' + ','.join(map(str, hours)) + f';BYMINUTE={minute};BYSECOND=0'
@@ -234,13 +259,21 @@ def daily_schedule_summary(reference=None):
     interval, which is why the shipped Asia/Shanghai configuration cannot reveal the difference.
     Half-hour zones and other offsets can, so both clocks are reported rather than assumed.
     """
+    if SCHEDULE_MODE == 'random':
+        return {'mode': 'random', 'timezone': SITE_TIMEZONE,
+                'poll_seconds': SCHEDULE_POLL_SECONDS,
+                'window': [f'{SCHEDULE_WINDOW_START:02d}:00', f'{SCHEDULE_WINDOW_END:02d}:00'],
+                'distribution': 'beta', 'curve': list(SCHEDULE_CURVE), 'random_source': 'SystemRandom',
+                'recovery_hours': SCHEDULE_RECOVERY_HOURS, 'rrule': daily_schedule_rrule(),
+                'rrule_clock_is_ambiguous': False}
     reference = reference or datetime.now(timezone.utc)
     hour, minute = map(int, SCHEDULE_TIME.split(':'))
     local = reference.astimezone(ZoneInfo(SCHEDULE_TIMEZONE)).replace(
         hour=hour, minute=minute, second=0, microsecond=0)
     offsets = range(0, 24, SCHEDULE_RECOVERY_HOURS)
     fires = [local + timedelta(hours=offset) for offset in offsets]
-    return {'time': SCHEDULE_TIME, 'timezone': SCHEDULE_TIMEZONE,
+    return {'mode': 'fixed', 'time': SCHEDULE_TIME, 'timezone': SCHEDULE_TIMEZONE,
+            'poll_seconds': SCHEDULE_POLL_SECONDS,
             'recovery_hours': SCHEDULE_RECOVERY_HOURS,
             'fires_local': sorted(moment.strftime('%H:%M') for moment in fires),
             'fires_utc': sorted(moment.astimezone(timezone.utc).strftime('%H:%M') for moment in fires),

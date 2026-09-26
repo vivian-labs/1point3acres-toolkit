@@ -50,7 +50,7 @@ Issues = "https://github.com/vivian-labs/1point3acres-toolkit/issues"
 # subdirectory (tests, caches, anything a run left behind), no shell entries, no machine-local client config.
 [tool.hatch.build.targets.wheel]
 only-include = ["outputs/一亩三分地本地工具"]
-exclude = ["outputs/一亩三分地本地工具/*/", "*.sh", "*.cmd", "mcp.config.json"]
+exclude = ["outputs/一亩三分地本地工具/*/", "*.sh", "*.cmd", "*.ps1", "mcp.config.json"]
 
 [tool.hatch.build.targets.wheel.sources]
 "outputs/一亩三分地本地工具" = "onepoint3acres_toolkit"

@@ -1,25 +1,60 @@
 import json
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 from browser import Browser
 from library import Library, load_learned_answers, record_answer_outcome
-from settings import (ROOT, SITE, STATE, SUBMISSION_TIMEOUT, SUBMISSION_ATTEMPT_LIMIT, ACCOUNT_UID,
+from settings import (ROOT, SITE, STATE, SUBMISSION_TIMEOUT, ACCOUNT_UID,
                       DATABASE_NAME, DAILY_RETRY_LIMIT, DAILY_RUN_TIMEOUT, LEARNED_ANSWERS_NAME, CHECKIN_MOOD_RANDOM,
-                      CHECKIN_MOOD_DEFAULT, MOOD_PHRASES_FILE, MOOD_PHRASE_RECENT_DAYS)
+                      CHECKIN_MOOD_DEFAULT, MOOD_PHRASES_FILE, MOOD_PHRASE_RECENT_DAYS, QUIZ_GAP_SECONDS)
 from contracts import (ACTIONS, REWARD_TITLES, ActionStatus, RunStatus, format_error, recovery_summary,
                        ResumeDecision, DAILY_RETRY_ERRORS, day_complete)
-from rules import choose_answer, choose_mood, choose_phrase, load_mood_phrases, site_day, verify_reward, daily_due_at
+from rules import (choose_answer, choose_mood, choose_phrase, load_mood_phrases, site_day, verify_reward,
+                   draw_daily_due_at, make_quiz_gap)
 
 
-def _recent_checkins():
-    """Yesterday's mood and the phrases of the last MOOD_PHRASE_RECENT_DAYS days, newest first."""
+def _wait_quiz_gap(browser, plan):
+    remaining = (datetime.fromisoformat(plan['ready_at']) - datetime.now(timezone.utc)).total_seconds()
+    if remaining > QUIZ_GAP_SECONDS[1]:
+        raise RuntimeError('daily_clock_changed')
+    if remaining > 0:
+        browser.sb.sleep(remaining)
+
+
+def _daily_plan(day, kind, create):
     db = None
     try:
         db = Library(STATE / DATABASE_NAME)
-        return db.recent_checkins(ACCOUNT_UID, MOOD_PHRASE_RECENT_DAYS)
+        return db.daily_plan(ACCOUNT_UID, day, kind, create)
+    except Exception:
+        raise RuntimeError('daily_history_unavailable') from None
+    finally:
+        if db is not None:
+            db.close()
+
+
+def _checkin_plan(day):
+    """Freeze the public text before UI preparation. Explicit opt-out takes effect immediately."""
+    if not CHECKIN_MOOD_RANDOM:
+        return {'mood': CHECKIN_MOOD_DEFAULT, 'phrase': None}
+    db = None
+    try:
+        db = Library(STATE / DATABASE_NAME)
+        def create():
+            recent = db.recent_checkins(ACCOUNT_UID, MOOD_PHRASE_RECENT_DAYS, on=day)
+            today = next((row for row in recent if row['site_day'] == day), None)
+            if today:
+                return {'mood': today['mood'], 'phrase': today['phrase']}
+            yesterday = (date.fromisoformat(day) - timedelta(days=1)).isoformat()
+            previous = next((row['mood'] for row in recent if row['site_day'] == yesterday), None)
+            mood = choose_mood(previous)
+            phrase = choose_phrase(mood, load_mood_phrases(MOOD_PHRASES_FILE),
+                                   [row['phrase'] for row in recent if row.get('phrase')])
+            # The site's explicit no-diary mood supports an empty check-in without a textarea.
+            return {'mood': mood if phrase is not None else CHECKIN_MOOD_DEFAULT, 'phrase': phrase}
+        return db.daily_plan(ACCOUNT_UID, day, 'checkin', create)
     except Exception:
         raise RuntimeError('daily_history_unavailable') from None
     finally:
@@ -53,15 +88,30 @@ def _record_heartbeat(now):
             db.close()
 
 
+def _retry_due(day):
+    db = None
+    try:
+        db = Library(STATE / DATABASE_NAME)
+        return db.daily_retry_due(ACCOUNT_UID, day)
+    except Exception:
+        raise RuntimeError('daily_history_unavailable') from None
+    finally:
+        if db is not None:
+            db.close()
+
+
 def resume_daily(supplied_answer=None, expected_question=None):
     now = datetime.now(timezone.utc)
-    day, due = site_day(now), daily_due_at(now)
-    result = {'status': RunStatus.COMPLETE, 'site_day': day, 'due_at': due.isoformat(),
+    day = site_day(now)
+    result = {'status': RunStatus.COMPLETE, 'site_day': day, 'due_at': None,
               'decision': None, 'history': None, 'attempts': [], 'error': None}
     try:
         if not ACCOUNT_UID:
             raise RuntimeError('account_not_configured')
         _record_heartbeat(now)
+        plan = _daily_plan(day, 'schedule', lambda: {'due_at': draw_daily_due_at(now).isoformat()})
+        due = datetime.fromisoformat(plan['due_at'])
+        result['due_at'] = plan['due_at']
         if now < due:
             result['decision'] = ResumeDecision.NOT_DUE
             return result
@@ -70,6 +120,10 @@ def resume_daily(supplied_answer=None, expected_question=None):
             if site_day() != day:
                 raise RuntimeError('site_day_changed')
             result['decision'] = ResumeDecision.ALREADY_COMPLETE
+            return result
+        retry_due = _retry_due(day)
+        if supplied_answer is None and retry_due and now < retry_due:
+            result.update(decision=ResumeDecision.RECOVERY_WAIT, retry_at=retry_due.isoformat())
             return result
         for _ in range(DAILY_RETRY_LIMIT + 1):
             if site_day() != day:
@@ -94,6 +148,26 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
     browser = None
     submission_checks = 0
     missing_responses = set()
+    quiz_gap = None
+
+    def note_checkin(account):
+        nonlocal quiz_gap
+        if not status_only and not account['app_status'].get('question'):
+            quiz_gap = _daily_plan(result['site_day'], 'quiz_gap',
+                                   lambda: make_quiz_gap(datetime.now(timezone.utc)))
+            result['quiz_gap'] = quiz_gap
+
+    def checkpoint():
+        db = None
+        try:
+            db = Library(STATE / DATABASE_NAME)
+            db.save_daily({**result, 'status': result.get('status', RunStatus.NEEDS_ATTENTION),
+                           'finished_at': datetime.now(timezone.utc).isoformat()}, ACCOUNT_UID, checkpoint=True)
+        except Exception:
+            raise RuntimeError('daily_history_write_failed') from None
+        finally:
+            if db is not None:
+                db.close()
 
     def check_day():
         if site_day() != result['site_day']:
@@ -107,12 +181,22 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
 
     def submit(entry, label):
         check_day()
+        browser.check_active()
         result['actions'].append(entry)
+        try:
+            checkpoint()  # Durable before the browser may send anything, including if this process is killed.
+            check_day()  # A database lock may have kept us waiting across midnight.
+            browser.check_active()
+        except Exception:
+            result['actions'].remove(entry)  # The browser has not been called yet.
+            checkpoint()
+            raise
         try:
             browser.click_text(label)
         except RuntimeError as error:
             if str(error) == 'button_not_ready':
                 result['actions'].remove(entry)  # The browser explicitly did not click.
+                checkpoint()
             raise
 
     def observe_submission(entry, account, logs):
@@ -148,10 +232,11 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                     known_complete = bool(account['app_status'].get(flag) or prior.get('completed'))
                     result['actions'].append({'action': action, 'completed': known_complete,
                         'status': ActionStatus.ALREADY_DONE if known_complete else ActionStatus.REWARD_UNCONFIRMED})
+                    if action == 'checkin' and known_complete:
+                        note_checkin(account)
                     continue
-                if prior.get('unconfirmed_submission_run_id') and (prior.get('response_ever_seen')
-                        or prior.get('submission_attempts', 0) >= SUBMISSION_ATTEMPT_LIMIT):
-                    # The site answered once, or the day's attempts are spent: verify receipts, never resubmit.
+                if prior.get('unconfirmed_submission_run_id'):
+                    # Missing receipts cannot prove the server did not execute a request.
                     result['actions'].append({'action': action, 'status': ActionStatus.SUBMISSION_UNCONFIRMED})
                     continue
                 if status_only:
@@ -160,14 +245,8 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                 browser.goto(SITE + '/next/' + route)
                 entry = {'action': action, 'status': ActionStatus.SUBMISSION_UNCONFIRMED}
                 if action == 'checkin':
-                    # On by default (issue #15): the mood and a line from the shipped pool are chosen like
-                    # a member would and recorded with the run. Switched off, the default mood publishes nothing.
-                    mood, phrase = CHECKIN_MOOD_DEFAULT, None
-                    if CHECKIN_MOOD_RANDOM:
-                        recent = _recent_checkins()
-                        mood = choose_mood(recent[0]['mood'] if recent else None)
-                        phrase = choose_phrase(mood, load_mood_phrases(MOOD_PHRASES_FILE),
-                                               [row['phrase'] for row in recent if row.get('phrase')])
+                    plan = _checkin_plan(result['site_day'])
+                    mood, phrase = plan['mood'], plan['phrase']
                     entry.update(mood=mood, phrase=phrase)
                     browser.wait_for("[...document.querySelectorAll('button')].some(e=>e.textContent.includes(" + json.dumps(mood) + "))", allow_solver=False)
                     browser.evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.includes(" + json.dumps(mood) + ")).click()")
@@ -201,6 +280,11 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                     browser.wait_for("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()===" + json.dumps(options[choice]) + ")", allow_solver=False)
                     browser.click_text(options[choice])
                     browser.wait_for("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='提交答案'&&!e.disabled)", allow_solver=False)
+                    if quiz_gap is None:
+                        # A pending check-in must not suppress the independent quiz. In that case
+                        # use this observation as a conservative anchor, without claiming it completed.
+                        note_checkin(account)
+                    _wait_quiz_gap(browser, quiz_gap)
                     submit(entry, '提交答案')
                 # Do not navigate until the real mutation response has arrived.
                 path = '/trpc/' + action_spec.method
@@ -216,6 +300,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                             pass
                         solver_attempted = True
                 entry['response_seen'] = path in browser.ids
+                checkpoint()
                 if path not in browser.ids:
                     submission_checks += 1
                     missing_responses.add(action)
@@ -223,6 +308,9 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                 logs = browser.credit_logs()
                 after = read_account()
                 confirmed = observe_submission(entry, after, logs)
+                checkpoint()
+                if action == 'checkin' and confirmed:
+                    note_checkin(after)
                 if action == 'quiz' and asked:
                     # After observe_submission, never before: it is what establishes the receipt.
                     record_answer_outcome(asked, answered, STATE / LEARNED_ANSWERS_NAME,
@@ -262,7 +350,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
     db = None
     try:
         db = Library(STATE / DATABASE_NAME)
-        db.save_daily(result, ACCOUNT_UID)
+        db.save_daily(result, ACCOUNT_UID, checkpoint=True)
         result['history_saved'] = True
     except Exception:
         result['status'] = RunStatus.FAILED
