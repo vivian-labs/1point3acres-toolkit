@@ -23,6 +23,13 @@
 > [!NOTE]
 > 本文讲「它是怎么做的」；具体命令、参数和排错步骤都在 [使用说明](outputs/一亩三分地本地工具/README.md)。
 
+## 最近更新
+
+- **软件包安装。** 新增 `1point3acres-toolkit` MCP 入口和 `1point3acres-toolkit-cli` 命令行入口；安装版使用个人应用数据目录，也可通过 `ONEPOINT3ACRES_HOME` 指定位置。见 [快速开始](#快速开始)。
+- **离线版本诊断。** 命令行 `info` 和 MCP 工具 `runtime_info` 可以核对磁盘源码、当前进程加载的版本与调度配置，发现更新后仍在运行的旧进程。见 [更新与维护](#维护)。
+- **Windows 定时任务。** 仓库版提供 `计划.ps1`，支持预览、安装、查看状态和移除，每分钟通过 `pythonw.exe` 检查一次，不弹控制台窗口。见 [每日自动运行](outputs/一亩三分地本地工具/README.md#automation)。
+- **重启后接着跑。** 每日随机时间、心情短句、签到后的答题等待截止时间和提交意图都先保存在本机；恢复时复用记录，失败后按 5、10、20、40、60 分钟逐步等待，避免反复访问网站。
+
 ## 目录
 
 | 你想 | 看这里 |
@@ -246,7 +253,7 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 4. **配账号、存密码。** 写一个只含用户名和 uid 的账号配置；然后在终端隐藏输入一次密码，交给系统保管。
 5. **登录一次。** 用保管的密码建立登录。不想存密码也可以微信扫码，但之后的日常自动恢复仍需要密码。
 6. **手动跑一次签到答题。** 看到「圆满完成」。出现「题库没题」就按 [自动答题](#答题) 那节补一次答案。
-7. **配定时任务。** 让系统每分钟检查一次是否到期。Windows 提供 `计划.ps1` 安装入口；再配离线健康观察，及时发现连续失败。
+7. **配定时任务。** 先用 `info` 核对当前版本和调度配置，再让系统每分钟执行 `daily --resume`。macOS 使用 launchd；Windows 仓库版提供 `计划.ps1`，可先用 `-Action Install -WhatIf` 预览，再安装。安装版需自行配置计划调用 `1point3acres-toolkit-cli daily --resume`。同一账号只保留一个每日执行计划，再配离线健康观察，及时发现连续失败。
 
 <a id="其他功能"></a>
 
@@ -279,6 +286,8 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 | 看到 | 意思 / 怎么办 |
 |:--|:--|
 | `not_due`、`already_complete`、`already_done` | 不是故障。还没到计划时间，或今天已经确认完成 |
+| `recovery_wait` | 上次失败后的恢复等待期，`retry_at` 给出下次尝试时间；此时不开浏览器，也不代表当天任务成功 |
+| `runtime_restart_required` | 源码或配置已变化，当前进程仍使用旧版本；重连 MCP 服务后调用 `runtime_info` 核对 |
 | `answer_needed` | 题库没这道题，按 [自动答题](#答题) 补一次答案 |
 | `account_not_configured` / `invalid_local_account_config` | 账号配置文件缺失或格式不对：只含用户名和 uid（可选计划时间和心情开关），uid 是正整数 |
 | `login_required_credentials_not_configured` | 还没存密码，重做快速开始第 4 步 |
@@ -288,7 +297,7 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 | `browser_connection_lost` / `daily_run_timeout` | 浏览器中途断开或超过 15 分钟（多为电脑睡眠），已自动重开一次；反复出现再看系统日志 |
 | `another_task_is_using_the_browser` | 有别的任务在用浏览器，等它结束；确认没配两个定时任务 |
 | `consistency_check_failed` | 跑检查命令，按提示修 |
-| 定时任务没跑 | 确认任务已启用、指向工具目录、电脑当时开着；跑一次历史命令看健康判定 |
+| 定时任务没跑 | 确认任务已启用、路径正确、电脑当时可用；Windows 还需当前用户保持登录。用 `info` 查调度配置、`daily-history` 查当天结果，系统任务退出码为 0 不代表奖励已到账 |
 
 更多错误代号和处理见 [使用说明 › 常见问题](outputs/一亩三分地本地工具/README.md#troubleshooting)。提 Issue 时给出系统、Python、Chrome 版本、用到的命令和脱敏后的结果代号，不要贴账号配置或完整的结果文件。
 
@@ -296,11 +305,15 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 
 ## 更新与维护
 
-更新的原理是「先停、再拉、再检查、再开」：
+仓库版更新的原理是「先停、再拉、再检查、再开」：
 
 ![更新到新版本：五步](docs/update-flow.svg)
 
 你电脑上的账号、密码、数据库、Chrome 设置都不受更新影响。计划时间之类的个人配置写在账号配置里，不改仓库里的代码，更新时才不会冲突。具体命令见 [使用说明 › 更新与维护](outputs/一亩三分地本地工具/README.md#maintenance)。
+
+**确认更新已生效。** 仓库版在工具目录执行 `./运行.sh info`（Windows：`运行.cmd info`）；软件包版执行 `1point3acres-toolkit-cli info`。它只读本机版本与有效配置，不读凭据、不开浏览器。接入 AI 助手的常驻 MCP 服务需要在更新源码或账号配置后重连，再调用 `runtime_info`，确认 `restart_required=false`，且 `loaded.fingerprint` 与 `disk.fingerprint` 一致。
+
+**软件包版升级。** 暂停每日计划并等待当前运行结束后，在原安装环境执行 `python -m pip install --upgrade 1point3acres-toolkit`；用 `info` 核对后恢复计划，并重连使用该环境的 MCP 服务。账号和历史仍保留在个人应用数据目录中。`计划.ps1` 是仓库版入口，不随 wheel 分发。
 
 **几点须知：**
 
@@ -327,7 +340,7 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 | 浏览器自动化 | 本机安装的 Chrome + SeleniumBase 4.53.8（CDP 模式）+ mycdp 1.4.0 | 用 Chrome DevTools Protocol 直接驱动真实 Chrome，走你自己的登录会话，Cloudflare 验证由 SeleniumBase 的 CDP 方案处理 |
 | 站点访问 | 页面内调用站点自己的 tRPC 接口（身份、题目、积分流水）；监听网络事件确认签到、答题的响应 | 读接口比解析页面稳；提交只认站点真实响应 |
 | HTML 解析 | beautifulsoup4 4.15.0 | 面经、版面、搜索结果这些老版 Discuz 页面只有 HTML |
-| 数据存储 | SQLite（一个文件）+ 几个 JSON 文件，都在 `work/` | 单文件、零配置、可离线查 |
+| 数据存储 | SQLite（一个文件）+ 几个 JSON 文件；仓库版在 `work/`，安装版在个人应用数据目录 | 单文件、零配置、可离线查 |
 | 凭据保护 | macOS 登录钥匙串 / Windows DPAPI | 系统级加密，和机器、用户绑定，代码里不出现明文 |
 | 调度 | macOS launchd / Windows 任务计划程序 | 用系统自带的，不装守护进程 |
 | MCP 服务 | mcp 2.2.0 + pydantic 2.13.5，stdio 传输 | 让 Claude Code、Codex 等 AI 客户端调用已登记的工具（清单见 `architecture.json`） |
