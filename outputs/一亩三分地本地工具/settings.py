@@ -12,7 +12,7 @@ WORKSPACE = ROOT.parent.parent
 WINDOWS = sys.platform == 'win32'
 MACOS = sys.platform == 'darwin'
 # Two ways to run. From a checkout, state lives beside the source under work/ and the venv's Python runs the
-# scripts. Installed from PyPI (`pip install 1point3acres-toolkit`, `uvx 1point3acres-toolkit`) the wheel ships
+# scripts. Installed from PyPI (`pip install 1point3acres-toolkit`, `uvx 1point3acres-toolkit@latest`) the wheel ships
 # this directory as IMPORT_NAME, there is no workspace, and everything the tool writes goes to one per-user data
 # directory: DATA_HOME_ENV names it, else the platform's application-data folder. The same variable also moves a
 # checkout's state, which is how tests exercise the installed layout without installing anything.
@@ -234,10 +234,10 @@ MCP_NAME = '1point3acres-local'
 
 def mcp_config():
     """What an MCP client needs to start this server: a checkout runs mcp_server.py with the venv's Python; the
-    installed package runs the console script pip put on PATH. A named data directory is passed on either way."""
+    installed package requests the latest release through uvx on PATH. A named data directory is passed on either way."""
     env = {'PYTHONUTF8': '1', **({DATA_HOME_ENV: str(DATA_HOME)} if DATA_HOME else {})}
     if INSTALLED:
-        server = {'command': PACKAGE_NAME, 'args': [], 'env': env}
+        server = {'command': 'uvx', 'args': [PACKAGE_NAME + '@latest'], 'env': env}
     else:
         server = {'command': str(PYTHON), 'args': [str(ROOT / 'mcp_server.py')], 'env': env}
     return {'mcpServers': {MCP_NAME: server}}

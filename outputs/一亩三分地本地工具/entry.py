@@ -1,4 +1,4 @@
-"""Entry points of the installed package: `pip install 1point3acres-toolkit` or `uvx 1point3acres-toolkit`.
+"""Entry points of the installed package: `pip install 1point3acres-toolkit` or `uvx 1point3acres-toolkit@latest`.
 
 A checkout runs mcp_server.py and cli.py as scripts, so the flat modules import each other by bare name. The wheel
 ships this directory as one package; these functions restore the script layout before importing anything else, so

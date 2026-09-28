@@ -65,11 +65,11 @@ class InstalledLayoutTests(unittest.TestCase):
         self.assertEqual(settings.STATE, settings.WORKSPACE / 'work' / 'local-toolkit-state')
         self.assertEqual(settings.CONFIG_FILE, settings.ROOT / 'mcp.config.json')
 
-    def test_client_config_names_the_console_script_only_when_installed(self):
+    def test_installed_client_config_requests_latest_and_preserves_data_home(self):
         home = Path('~/synthetic-home').expanduser()
         with patch.object(settings, 'INSTALLED', True), patch.object(settings, 'DATA_HOME', home):
             server = settings.mcp_config()['mcpServers'][settings.MCP_NAME]
-            self.assertEqual((server['command'], server['args']), (settings.PACKAGE_NAME, []))
+            self.assertEqual((server['command'], server['args']), ('uvx', [settings.PACKAGE_NAME + '@latest']))
             self.assertEqual(server['env'], {'PYTHONUTF8': '1', settings.DATA_HOME_ENV: str(home)})
         with patch.object(settings, 'INSTALLED', False), patch.object(settings, 'DATA_HOME', None):
             server = settings.mcp_config()['mcpServers'][settings.MCP_NAME]

@@ -241,7 +241,7 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 
 ### 只要接给 AI 助手：一条命令装
 
-工具也打包成了标准的 Python 软件包，名字是 `1point3acres-toolkit`。只想把它接给 Claude Code、Codex 这类助手用，不必克隆仓库：装好 Chrome 和 Python 3.12，让助手用 `uvx 1point3acres-toolkit` 注册就行。这样装的版本把账号配置、专用 Chrome、数据库都放在你个人的应用数据文件夹里，和克隆仓库的方式互不干扰；命令行也有，叫 `1point3acres-toolkit-cli`。具体步骤见 [使用说明 › 安装为软件包](outputs/一亩三分地本地工具/README.md#pip)。
+工具也打包成了标准的 Python 软件包，名字是 `1point3acres-toolkit`。只想把它接给 Claude Code、Codex 这类助手用，不必克隆仓库：装好 Chrome、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，让助手用 `uvx 1point3acres-toolkit@latest` 注册就行。这样装的版本把账号配置、专用 Chrome、数据库都放在你个人的应用数据文件夹里，和克隆仓库的方式互不干扰；命令行也有，叫 `1point3acres-toolkit-cli`。具体步骤见 [使用说明 › 安装为软件包](outputs/一亩三分地本地工具/README.md#pip)。
 
 ### 自己动手：七步的原理
 
@@ -253,7 +253,7 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 4. **配账号、存密码。** 写一个只含用户名和 uid 的账号配置；然后在终端隐藏输入一次密码，交给系统保管。
 5. **登录一次。** 用保管的密码建立登录。不想存密码也可以微信扫码，但之后的日常自动恢复仍需要密码。
 6. **手动跑一次签到答题。** 看到「圆满完成」。出现「题库没题」就按 [自动答题](#答题) 那节补一次答案。
-7. **配定时任务。** 先用 `info` 核对当前版本和调度配置，再让系统每分钟执行 `daily --resume`。macOS 使用 launchd；Windows 仓库版提供 `计划.ps1`，可先用 `-Action Install -WhatIf` 预览，再安装。安装版需自行配置计划调用 `1point3acres-toolkit-cli daily --resume`。同一账号只保留一个每日执行计划，再配离线健康观察，及时发现连续失败。
+7. **配定时任务。** 先用 `info` 核对当前版本和调度配置，再让系统每分钟执行 `daily --resume`。macOS 使用 launchd；Windows 仓库版提供 `计划.ps1`，可先用 `-Action Install -WhatIf` 预览，再安装。uvx 版计划调用 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume`（每次启动检查更新，有网络开销）；pip 版调用 `1point3acres-toolkit-cli daily --resume`。调度器应使用入口的绝对路径，并与 MCP 共用数据目录。同一账号只保留一个每日执行计划，再配离线健康观察，及时发现连续失败。
 
 <a id="其他功能"></a>
 
@@ -306,15 +306,17 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 
 ## 更新与维护
 
-仓库版更新的原理是「先停、再拉、再检查、再开」：
+**普通用户推荐 uvx 接入。** `uvx 1point3acres-toolkit@latest` 在重新启动 MCP 时请求最新兼容发布版本，无需 `git pull`；已有进程需要重连。我们必须把新版本发布到 PyPI，只更新 GitHub 不会更新软件包用户。不带 `@latest` 的 uvx 会复用缓存，详见 [uv 官方说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。已有用户需要修改客户端保存的启动配置，仓库用户另需迁移个人数据，具体见使用说明。
+
+仓库版供开发者使用，更新的原理是「先停、再拉、再检查、再开」：
 
 ![更新到新版本：五步](docs/update-flow.svg)
 
 你电脑上的账号、密码、数据库、Chrome 设置都不受更新影响。计划时间之类的个人配置写在账号配置里，不改仓库里的代码，更新时才不会冲突。具体命令见 [使用说明 › 更新与维护](outputs/一亩三分地本地工具/README.md#maintenance)。
 
-**确认更新已生效。** 仓库版在工具目录执行 `./运行.sh info`（Windows：`运行.cmd info`）；软件包版执行 `1point3acres-toolkit-cli info`。它只读本机版本与有效配置，不读凭据、不开浏览器。接入 AI 助手的常驻 MCP 服务需要在更新源码或账号配置后重连，再调用 `runtime_info`，确认 `restart_required=false`，且 `loaded.fingerprint` 与 `disk.fingerprint` 一致。
+**确认更新已生效。** 仓库版在工具目录执行 `./运行.sh info`（Windows：`运行.cmd info`）；uvx 版执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info`；pip 版执行 `1point3acres-toolkit-cli info`。它只读本机版本与有效配置，不读凭据、不开浏览器。接入 AI 助手的常驻 MCP 服务需要在更新源码或账号配置后重连，再调用 `runtime_info`，确认 `restart_required=false`，且 `loaded.fingerprint` 与 `disk.fingerprint` 一致。
 
-**软件包版升级。** 暂停每日计划并等待当前运行结束后，在原安装环境执行 `python -m pip install --upgrade 1point3acres-toolkit`；用 `info` 核对后恢复计划，并重连使用该环境的 MCP 服务。账号和历史仍保留在个人应用数据目录中。`计划.ps1` 是仓库版入口，不随 wheel 分发。
+**pip 安装版升级。** 暂停每日计划并等待当前运行结束后，在原安装环境执行 `python -m pip install --upgrade 1point3acres-toolkit`；用 `info` 核对后恢复计划，并重连使用该环境的 MCP 服务。账号和历史仍保留在个人应用数据目录中。`计划.ps1` 是仓库版入口，不随 wheel 分发。
 
 **几点须知：**
 
