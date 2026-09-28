@@ -68,7 +68,7 @@ work\cf-probe-venv\Scripts\python.exe -m pip install -r outputs\一亩三分地�
 
 ## 安装为软件包（pip / uvx）
 
-不想克隆仓库、只想把工具接给 MCP 客户端或者用命令行，可以直接装 PyPI 上的包 `1point3acres-toolkit`（同样需要 Chrome 和 Python 3.12；推荐方式还需先[安装 uv](https://docs.astral.sh/uv/getting-started/installation/)，它提供 `uvx`）：
+不想克隆仓库、只想把工具接给 MCP 客户端或者用命令行，可以直接装 [PyPI 上已发布的 `1point3acres-toolkit`](https://pypi.org/project/1point3acres-toolkit/)（同样需要 Chrome 和 Python 3.12；推荐方式还需先[安装 uv](https://docs.astral.sh/uv/getting-started/installation/)，它提供 `uvx`）：
 
 ```sh
 uvx 1point3acres-toolkit@latest          # 在隔离环境准备最新版，再启动 MCP 服务
@@ -425,13 +425,23 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 改代码后统一跑 `检查.sh`（完整离线检查与回归）和 `检查.sh --sync`（重建生成文件后再检查）。题库映射源自 eagleoflqj/p1a3_script（原作者 Liumeo）。
 
-**发布新版本（维护者）**：推送 GitHub 代码不会更新软件包用户，必须发布到 PyPI。先通过完整离线检查与回归，把仓库根目录 `pyproject.toml` 和 `server.json` 里的版本号一起改，检查命令会核对两者一致，以及依赖、入口命令、目录映射和登记一致。然后在仓库根目录 `python -m build` 生成 wheel 和 sdist，`twine upload dist/*` 传到 PyPI，再打同名 tag 发 GitHub Release。`server.json` 保留明确的发布版本，目录安装可能固定该版本；只有配置为 `@latest` 的入口才采用这里的启动时更新策略。MCP 官方目录读的是 `server.json`：装好 `mcp-publisher`，`mcp-publisher login github` 用有 vivian-labs 组织权限的账号登录，然后 `mcp-publisher publish`。PyPI 页面上的说明来自 `PYPI_README.md`，末尾那行 `mcp-name:` 是目录核对包归属用的，不能删。
+<a id="publishing"></a>
 
-### GitHub 自动发布到 PyPI
+### 发布新版本（维护者）
 
-维护者推荐使用 `.github/workflows/publish.yml`，通过 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/) 发布，无需长期 API token。首次在 PyPI 账号的 Publishing 页面添加 pending publisher：项目名 `1point3acres-toolkit`、GitHub owner `vivian-labs`、仓库 `1point3acres-toolkit`、工作流 `publish.yml`、环境 `pypi`。GitHub 的 `pypi` 环境仅允许 `main` 分支部署。
+[PyPI 1.1.0](https://pypi.org/project/1point3acres-toolkit/1.1.0/) 已发布，GitHub Trusted Publishing 授权已配置。后续使用 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 工作流，无需长期 API token。合并 main 或创建 GitHub Release 都不会自动上传到 PyPI，仍需手动触发工作流。
 
-先发布对应版本的 GitHub Release，确保标签对应提交的 Project consistency 检查全部通过，然后运行 `gh workflow run publish.yml --ref main -f tag=v1.1.0`（替换为实际版本）。工作流核对标签、软件包版本和 CI，构建并检查 wheel/sdist，再由独立发布任务获取短期 OIDC 身份上传。失败时检查 Actions 日志；只有 PyPI 页面出现该版本，才算完成软件包发布。MCP 官方目录登记仍按上面的步骤单独进行。
+1. 同步修改根目录 `pyproject.toml` 和 `server.json` 中的版本号，通过 PR 合并到 main。版本必须是尚未在 PyPI 发布的新版本；检查命令会核对版本、依赖和入口配置。
+2. 等待该提交的 Project consistency 检查全部通过，在该提交上创建对应 `v版本号` 标签及正式 GitHub Release。
+3. 在 Actions 中选择 Publish to PyPI，从 `main` 运行，`tag` 填上一步的标签。命令行等价命令为 `gh workflow run publish.yml --ref main -f tag=v版本号`（把 `v版本号` 替换为实际标签；`v1.1.0` 已发布，不要再次上传）。
+4. 工作流核对标签、软件包版本、正式 Release 和该提交的 CI，构建 wheel/sdist 并做严格检查，再由独立发布任务使用短期 OIDC 身份上传。
+5. 确认工作流成功、PyPI 页面出现新版本，再实测 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 和 MCP 的 `runtime_info`，更新 Release 说明。
+
+当前授权绑定 GitHub owner `vivian-labs`、仓库 `1point3acres-toolkit`、工作流 `publish.yml`、环境 `pypi`；GitHub 的 `pypi` 环境仅允许 `main` 分支部署。迁移仓库或工作流时同步修改 PyPI 项目的 Publishing 配置。首次建立新项目的方式见 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)。失败时查看 Actions 日志，确认已有文件是否上传成功后再处理；不要覆盖或重复上传已发布版本。
+
+PyPI 页面上的说明来自 `PYPI_README.md`，修改它需要随新版本发布，单独合并 README 不会刷新已有包的页面。末尾的 `mcp-name:` 用于目录核对包归属，不能删除。
+
+**MCP 官方目录登记是独立步骤。** PyPI 发布成功不代表已登记到 MCP 官方目录。`server.json` 保留明确的发布版本，目录安装可能固定该版本；只有配置为 `@latest` 的入口采用启动时更新。需要登记时，安装 `mcp-publisher`，执行 `mcp-publisher login github`，用有 vivian-labs 组织权限的账号登录，再执行 `mcp-publisher publish`。
 
 ### 提交中断恢复
 
