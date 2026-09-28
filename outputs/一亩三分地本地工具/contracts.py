@@ -108,6 +108,7 @@ class ActionStatus(StrEnum):
 
 
 class ResumeDecision(StrEnum):
+    MANUAL_RECOVERY_REQUIRED = 'manual_recovery_required'
     RECOVERY_WAIT = 'recovery_wait'
     NOT_DUE = 'not_due'
     ALREADY_COMPLETE = 'already_complete'
@@ -180,6 +181,10 @@ def daily_history_record(result):
         completed = True if True in observations else False if False in observations else None
         actions.append({'action': spec.key, 'status': status, 'completed': completed,
                         'response_seen': entry.get('response_seen'),
+                        'submission_phase': entry.get('submission_phase'),
+                        'submission_checked': entry.get('submission_checked', False),
+                        'retry_of': entry.get('retry_of'),
+                        'question': entry.get('question'),
                         # What the check-in said in the member's name, kept so later days can avoid repeats.
                         'mood': entry.get('mood'), 'phrase': entry.get('phrase'),
                         'reward_verified': status == ActionStatus.REWARD_VERIFIED
@@ -188,7 +193,7 @@ def daily_history_record(result):
     if error and error not in {'question_changed_or_not_confirmed', 'checkin_submission_unconfirmed',
                               'quiz_submission_unconfirmed', 'site_day_changed', 'api_http_error',
                               'daily_history_conflict', 'daily_history_unavailable', 'button_not_ready',
-                              'daily_clock_changed'}:
+                              'daily_clock_changed', 'invalid_quiz_recovery', 'quiz_recovery_stale'}:
         error = session_result(RuntimeError(error))['error']
         if error == 'session_status_unavailable':
             error = 'daily_run_failed'
@@ -218,12 +223,22 @@ def summarize_daily_history(records):
             'actions': [{'action': spec.key, 'completed': None, 'reward_verified': False,
                          'completion_run_id': None, 'reward_run_id': None,
                          'submission_attempts': 0, 'response_ever_seen': False,
-                         'unconfirmed_submission_run_id': None} for spec in ACTIONS]})
+                         'unconfirmed_submission_run_id': None, 'unconfirmed_checks': 0} for spec in ACTIONS]})
         day['run_count'] += 1
         for current, observed in zip(day['actions'], record['actions']):
-            if observed.get('response_seen') is not None:
+            if observed.get('submission_phase') or observed.get('response_seen') is not None:
                 current['submission_attempts'] += 1
-                current['response_ever_seen'] = current['response_ever_seen'] or observed['response_seen']
+                current['response_ever_seen'] = current['response_ever_seen'] or bool(observed.get('response_seen'))
+            if (observed.get('submission_phase') and observed.get('retry_of')
+                    == current['unconfirmed_submission_run_id']):
+                current['unconfirmed_submission_run_id'] = None
+                current['unconfirmed_checks'] = 0
+            if (observed['status'] == ActionStatus.SUBMISSION_UNCONFIRMED
+                    and current['unconfirmed_submission_run_id']
+                    and not observed.get('submission_phase') and observed.get('response_seen') is None
+                    and (observed.get('submission_checked')
+                         or record.get('error') == observed['action'] + '_submission_unconfirmed')):
+                current['unconfirmed_checks'] += 1
             if observed['status'] == ActionStatus.SUBMISSION_UNCONFIRMED:
                 current['unconfirmed_submission_run_id'] = current['unconfirmed_submission_run_id'] or record['run_id']
             if observed['completed'] is True:
@@ -238,6 +253,7 @@ def summarize_daily_history(records):
         for action in day['actions']:
             if action['completed'] is True or action['reward_verified']:
                 action['unconfirmed_submission_run_id'] = None
+                action['unconfirmed_checks'] = 0
     return [days[key] for key in sorted(days, reverse=True)]
 
 

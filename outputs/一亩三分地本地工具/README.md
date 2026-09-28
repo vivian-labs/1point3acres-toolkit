@@ -156,11 +156,33 @@ cd outputs/一亩三分地本地工具
 
 答案按选项文字匹配，不按 A/B/C 或第几项。
 
+<a id="quiz-recovery"></a>
+
+### 答题提交结果不明时恢复
+
+`quiz_submission_unconfirmed` 表示工具无法确定上次提交是否被网站处理，并不表示答错。输出的 `attention` 给出 `account_uid`、`site_day`、`run_id` 和处理提示。定时任务先补查一次；仍未确认且签到已核验时，返回 `decision=manual_recovery_required`、`status=needs_attention`，后续只更新心跳，不再自动打开浏览器。把这个状态接入自己的通知渠道；工具本身不保证弹出桌面通知。
+
+1. 先运行 `./运行.sh status`，只核验当前完成状态与奖励。已到账时无需重交，下一次定时触发会正常结束。
+2. 仍未完成时，可直接在网页答题，再运行 `status` 核验。也可确认愿意承担重复提交风险后，使用下面的人工恢复命令。
+3. 从 `attention` 复制账号、洛杉矶日期和失败记录编号，并填写网站当前原题和正确选项完整文字：
+
+```sh
+./运行.sh daily --retry-quiz 'RUN_ID' --site-day 'YYYY-MM-DD' --account-uid 123456 \
+  --question '完整原题' --answer '正确选项的完整文字'
+```
+
+这里的编号、日期和 uid 都是占位示例。Windows 使用 `运行.cmd`，把命令写在一行；软件包安装使用 `1point3acres-toolkit-cli`。
+
+`--retry-quiz` 是明确授权一次重试，不能与 `--resume` 同用。工具在浏览器锁内校验当前账号、当前站点日和待处理记录，重新查询完成状态、积分奖励和题目。已完成或有奖励时不重交；账号/日期不符报 `invalid_quiz_recovery`，记录过期或已被重试报 `quiz_recovery_stale`，题目变化报 `question_changed_or_not_confirmed`。重试仍没有回执时会生成新的待处理编号，旧编号不能重复使用；明确没有点击时保留原编号。不能用它补过去站点日的题目，也不要删除数据库绕过保护。
+
+运行历史新增 `submission_phase`（`click_started`、`click_returned`、`response_seen`）和人工恢复的 `retry_of`。`click_started` 只表示已保存即将调用点击的意图，不证明请求已发出；`submission_attempts` 统计有提交意图或回执证据的运行次数，不是服务端接收次数。旧记录没有阶段信息时，计数为 0 也不能证明从未提交。
+
+
 <a id="automation"></a>
 
 ## 每日自动运行
 
-失败后按 5、10、20、40、60 分钟逐步延长恢复间隔，上限 60 分钟。间隔依据已保存的运行记录计算，重启不重置；等待期返回 `decision=recovery_wait` 和 `retry_at`，不开浏览器。它表示本次调度检查完成，不表示签到答题已成功。只读查询不计入失败次数；明确提供完整原题和答案的补答可直接核对并尝试，仍受提交保护约束。
+失败后按 5、10、20、40、60 分钟逐步延长恢复间隔，上限 60 分钟。间隔依据已保存的运行记录计算，重启不重置；等待期返回 `decision=recovery_wait`、`status=needs_attention` 和 `retry_at`，不开浏览器，不表示签到答题已成功。只读查询不计入失败次数；明确提供完整原题和答案的补答可直接核对并尝试，仍受提交保护约束。
 
 思路：让操作系统每分钟跑一次 `运行.sh daily --resume`（Windows 用 `运行.cmd`）。这个命令自己判断是否到点、当天是否已完成，`not_due` / `already_complete` 时直接安静退出、不开浏览器，只有真正该签到时才动作。等待与已完成状态都不产生站点请求。手动 `daily` 不受随机窗口约束；定时计划必须使用 `daily --resume`。
 
@@ -220,7 +242,7 @@ macOS LaunchAgent 样例，存为 `~/Library/LaunchAgents/local.1point3acres-too
 - **macOS 可选加固（写在本机包装脚本里，不进仓库）**：合盖后的短暂后台唤醒（DarkWake）里也可能触发计划，脚本开头加 `pmset -g systemstate | grep -q Graphics || exit 0` 可以避开；用 `caffeinate -i` 包住运行命令能防止空闲睡眠（合盖仍会睡，只是减少中途被打断的概率）。另外，工具的 Chrome 在后台运行时，从 Dock / Spotlight 打开 Chrome 会进入工具的专用配置目录（同一个应用只保留一个实例）：想开自己的 Chrome，等任务结束，或用 `open -na "Google Chrome"` 另起一个实例；如果发现自己的登录落进了 `work/account-browser/chrome-profile`，在那个实例里退出登录即可。
 - **macOS 窗口行为**：系统不允许把窗口放到屏幕外，所以专用 Chrome 启动瞬间会短暂出现并切到前台（约 1 秒），随后自动最小化到 Dock、把焦点还给你之前正在用的应用；这个瞬间无法消除。微信扫码登录时窗口会被调到屏幕上，结束后同样最小化。Windows 上窗口始终隐藏。
 
-计划由 `daily --resume` 决定是否执行，它不会补过去站点日的签到。电脑休眠错过的触发，会在唤醒后的下一次检查补上；跑到一半睡着的那次会在运行截止（settings 的 `DAILY_RUN_TIMEOUT`，默认 15 分钟）内以 `daily_run_timeout` / `browser_connection_lost` 结束、自己收掉浏览器并重开一次，仍失败就等下一次检查。同一账号只保留一个每日执行计划。
+计划由 `daily --resume` 决定是否执行，它不会补过去站点日的签到。电脑休眠错过的触发，会在唤醒后的下一次检查补上；跑到一半睡着的那次会在运行截止（settings 的 `DAILY_RUN_TIMEOUT`，默认 15 分钟）内以 `daily_run_timeout` / `browser_connection_lost` 结束并收掉浏览器；确定尚未提交时重开一次，结果不明时保留提交保护，答题补查一次后提示人工处理。同一账号只保留一个每日执行计划。
 
 ### AI 助手补答与指纹
 
@@ -297,7 +319,7 @@ Register-ScheduledTask -TaskName '1p3a-health-watch' -Action $action -Trigger $t
 | `session-logout` | 退出本工具专用浏览器里的本站登录：只删专用配置里 `1point3acres.com` / `1p3a.com` 的 Cookie，不碰钥匙串凭据、账号配置、资料库或别的浏览器配置；删完用身份接口核实站点确实不认得账号了才算 `complete`。**不会自动重新登录**，要恢复就再跑 `session-login`；重复退出无害；别的任务正占着浏览器时直接失败、不清理 |
 | `session-login` | 用钥匙串里的密码建立/恢复会话。`--method wechat` 改为微信扫码：打开站点自己的微信登录页，把本工具的 Chrome 窗口移到屏幕上显示官方二维码（整页截图同时写到 `--qr-path`，默认本机状态目录，调用结束即删除），最多等 `--wait` 秒（默认 180，允许 10–600）由本人在微信里确认；有效会话直接复用、不显示二维码。站点没有公布二维码有效期，`expires_at` 恒为 null；扫到别的账号会立刻清掉那份会话并报 `wrong_account`；超时 `wechat_login_timeout`、Ctrl+C `wechat_login_cancelled`、二维码没出现 `wechat_qr_not_shown`。日常自动恢复仍只用密码 |
 | `daily` | 执行当天签到与答题，核对奖励 |
-| `daily --resume` | 供计划使用：自己判断是否该跑，`not_due` / `already_complete` / `recovery_wait` 不开浏览器 |
+| `daily --resume` | 供计划使用：自己判断是否该跑，`not_due` / `already_complete` / `recovery_wait` / `manual_recovery_required` 不开浏览器 |
 | `daily-history --limit 5` | 离线查看运行历史（站点用洛杉矶日期） |
 | `browse-board 472` | 不用搜索词，直接翻某个版面的最新帖子；结果可交给 `thread-detail` |
 | `unread` | 读未读计数（提醒 / 私信 / 聊天），不打开通知列表、不标记已读 |
@@ -364,8 +386,9 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 | `answer_needed` | 题库没这道题，按首次运行那节补答一次 |
 | `another_task_is_using_the_browser` | 有任务在用浏览器，等它结束，别同时开第二个 |
 | `chrome_profile_busy_or_start_failed` | 检查 Chrome 是否安装、专用任务是否还在跑，别杀掉所有 Chrome |
-| `browser_connection_lost` | 浏览器连接中途断了（多为运行时休眠或 Chrome 被关）；已自动重开一次，持续出现再看 Chrome 与系统日志 |
-| `daily_run_timeout` | 单次每日运行超过截止，已强制结束并重试一次；反复出现说明网站或网络持续卡住，附脱敏的 status / error 提 Issue |
+| `browser_connection_lost` | 浏览器连接中途断了；确定尚未提交时自动重开一次，提交结果不明时保留保护并提示处理 |
+| `daily_run_timeout` | 单次每日运行超过截止并强制结束；尚未提交时重试一次，提交结果不明时保留保护 |
+| `quiz_submission_unconfirmed` / `manual_recovery_required` | 先运行 `status` 核验，再按 [人工恢复步骤](#quiz-recovery) 处理 |
 | `consistency_check_failed` | 跑 `检查.sh`，按提示修；派生文件过期时加 `--sync` |
 | 自动计划没跑 | 确认计划已启用、指向本地工具目录、电脑当时可用；`not_due` 不是故障 |
 
@@ -387,4 +410,4 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 签到确认后，从 30–70 秒均匀抽取一次等待时间，把确认时间、间隔和截止时间写入当日计划。答题准备完成后只等待剩余部分；重启、补答复用截止时间，已经过去则不再等待。原有待确认签到仍保留保护，独立答题以首次恢复观察作为保守计时起点。网络处理可能使实际间隔更长。只读查询不等待；等待跨站点日时停止提交，系统时钟大幅回拨时返回 `daily_clock_changed`，留待后续正常触发恢复。
 
-签到和答题点击前先提交本机数据库记录，存储失败则不点击。进程在提交后中断时，下一次只查询完成状态和奖励；未收到回执不能证明未执行，不自动重交。明确的 `button_not_ready` 表示没有点击，可以在下次重试。记录更新按同一 run_id 保存，不重复计数。
+签到和答题点击前先提交本机数据库记录，存储失败则不点击。进程在提交后中断时，下一次只查询完成状态和奖励；未收到回执不能证明未执行，不自动重交；答题的人工恢复见 [答题提交结果不明时恢复](#quiz-recovery)。明确的 `button_not_ready` 表示没有点击，可以在下次重试。记录更新按同一 run_id 保存，不重复计数。
