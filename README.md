@@ -6,6 +6,7 @@
 
 在你自己的电脑上、用你自己的账号完成，不经过任何第三方。
 
+[![PyPI](https://img.shields.io/pypi/v/1point3acres-toolkit)](https://pypi.org/project/1point3acres-toolkit/)
 [![CI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/consistency.yml/badge.svg)](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/consistency.yml)
 ![macOS · Windows](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-4c8bf5)
 ![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
@@ -25,7 +26,7 @@
 
 ## 最近更新
 
-- **软件包安装。** 新增 `1point3acres-toolkit` MCP 入口和 `1point3acres-toolkit-cli` 命令行入口；安装版使用个人应用数据目录，也可通过 `ONEPOINT3ACRES_HOME` 指定位置。见 [快速开始](#快速开始)。
+- **PyPI 1.1.0 已发布。** [软件包](https://pypi.org/project/1point3acres-toolkit/1.1.0/)和 [GitHub Release](https://github.com/vivian-labs/1point3acres-toolkit/releases/tag/v1.1.0) 均已上线；`uvx …@latest` 的下载安装、MCP 连接和工具调用已验证。普通用户无需克隆仓库，新版本发布后重启 MCP 即可检查更新。见 [快速开始](#快速开始)。
 - **离线版本诊断。** 命令行 `info` 和 MCP 工具 `runtime_info` 可以核对磁盘源码、当前进程加载的版本与调度配置，发现更新后仍在运行的旧进程。见 [更新与维护](#维护)。
 - **Windows 定时任务。** 仓库版提供 `计划.ps1`，支持预览、安装、查看状态和移除，每分钟通过 `pythonw.exe` 检查一次，不弹控制台窗口。见 [每日自动运行](outputs/一亩三分地本地工具/README.md#automation)。
 - **重启后接着跑。** 每日随机时间、心情短句、签到后的答题等待截止时间和提交意图都先保存在本机；恢复时复用记录，失败后按 5、10、20、40、60 分钟逐步等待，避免反复访问网站。
@@ -233,15 +234,47 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 
 ## 快速开始
 
+### 推荐：用已发布的软件包接入 AI 助手
+
+[1point3acres-toolkit 已发布到 PyPI](https://pypi.org/project/1point3acres-toolkit/)。装好 Chrome、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，就能启动本地 MCP，无需 Git：
+
+```sh
+uvx 1point3acres-toolkit@latest
+```
+
+这是 MCP 服务的启动命令。要让 AI 助手调用它，在客户端添加以下配置；具体注册命令见 [MCP 接入](outputs/一亩三分地本地工具/README.md#mcp)：
+
+```json
+{
+  "mcpServers": {
+    "1point3acres-local": {
+      "command": "uvx",
+      "args": ["1point3acres-toolkit@latest"],
+      "env": {"PYTHONUTF8": "1"}
+    }
+  }
+}
+```
+
+将这一项合并到客户端已有配置，不要覆盖其他 MCP。使用 TOML 或图形设置的客户端，填入相同的启动命令、参数和环境变量即可。客户端找不到 `uvx` 时，填它的绝对路径。
+
+接入后还需[配置自己的论坛账号](outputs/一亩三分地本地工具/README.md#account)并建立登录；启动 MCP 本身不会配置账号或创建每日计划。账号、专用 Chrome 和历史保存在个人应用数据目录，可通过 `ONEPOINT3ACRES_HOME` 指定位置。`@latest` 在每次重新启动时请求最新兼容发布版本，已运行的服务需要重连，不会自动热更新。
+
+只想先检查程序能否运行，可以执行以下命令：uvx 会检查并准备软件包，随后 `info` 只读取本机状态，不会登录或签到：
+
+```sh
+uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
+```
+
+命令行、账号目录和定时任务的具体步骤见 [软件包安装](outputs/一亩三分地本地工具/README.md#pip)。
+
+### 交给 AI 助手配置每日签到
+
+把仓库交给一个能在本机执行命令的 AI 编程助手（Claude Code、Codex 等），说「使用已发布的软件包，装好并配置每天自动签到答题」。它可以按使用说明配置账号、验证首次运行，再创建系统定时任务。你需要提供论坛用户名和 uid，并按提示在本机安全输入密码。
+
+下面的源码安装适合需要改代码的开发者，或继续使用已有仓库版的用户。
+
 ![安装七步](docs/install-flow.svg)
-
-### 最省事：交给 AI 助手
-
-把仓库交给一个能在本机执行命令的 AI 编程助手（Claude Code、Codex 等），说「装好并配置每天自动签到答题」。它会完成克隆、建环境、装依赖、跑检查、配定时任务。你只需要提供论坛用户名和 uid（你在论坛的数字编号，个人空间链接里能看到），并在它弹出的安全输入框里输一次密码。密码直接进系统保管，助手拿不到明文。
-
-### 只要接给 AI 助手：一条命令装
-
-工具也打包成了标准的 Python 软件包，名字是 `1point3acres-toolkit`。只想把它接给 Claude Code、Codex 这类助手用，不必克隆仓库：装好 Chrome、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，让助手用 `uvx 1point3acres-toolkit@latest` 注册就行。这样装的版本把账号配置、专用 Chrome、数据库都放在你个人的应用数据文件夹里，和克隆仓库的方式互不干扰；命令行也有，叫 `1point3acres-toolkit-cli`。具体步骤见 [使用说明 › 安装为软件包](outputs/一亩三分地本地工具/README.md#pip)。
 
 ### 自己动手：七步的原理
 
@@ -354,6 +387,8 @@ macOS 和 Windows 上定时任务怎么配、健康观察者怎么配，见 [使
 | CI | GitHub Actions：Ubuntu 静态检查（构建软件包并核对内容）→ Windows 2022 / 2025 + macOS 15 单元测试 → Windows 2025 + macOS 15 集成测试 → 汇总 | 和本地检查命令跑的是同一个 `check.py` |
 | 治理 | `architecture.json` 白名单 + `governance.py` 用 AST 扫源码 | 模块依赖、外部库归属、状态字面量、生成文件是否过期，都是机器验，不靠人记 |
 | 配图 | `docs/diagrams.py`，纯标准库生成 SVG | 一套样式画 29 张图，改一处全局生效；深色模式自动适配 |
+
+**维护者发布。** 通过 PR 将版本变更合并到 main，确认目标提交的 CI 通过，创建对应 GitHub Release，再手动触发 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml)。Trusted Publishing 授权已配置，无需保存长期 token；每次仍需触发发布，合并 main 不会自动上传。完整步骤见 [发布流程](outputs/一亩三分地本地工具/README.md#publishing)。
 
 依赖清单在 [`requirements.txt`](outputs/一亩三分地本地工具/requirements.txt)，版本全部锁死，检查命令会核对已安装版本和清单一致。
 
