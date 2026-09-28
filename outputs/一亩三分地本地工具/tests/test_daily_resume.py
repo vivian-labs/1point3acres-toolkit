@@ -290,7 +290,8 @@ class DailyResumeTests(unittest.TestCase):
                 self.assertEqual(len(first['attempts']), 1)
                 self.assertEqual(session.submissions, 1)
                 # A missing receipt is ambiguous, even if the online flag still says undone.
-                for _ in range(3):
+                for index in range(3):
+                    clock.now.return_value = NOW + timedelta(minutes=index + 1)
                     later = daily.resume_daily(supplied_answer='Answer', expected_question='Synthetic question')
                     self.assertEqual(later['error'], 'quiz_submission_unconfirmed')
                     self.assertEqual(session.submissions, 1)
@@ -298,8 +299,14 @@ class DailyResumeTests(unittest.TestCase):
                 session.completed = True
                 session.rewarded = True
                 clock.now.return_value = NOW + timedelta(hours=1)
+                with patch('daily.Browser') as unopened:
+                    waiting = daily.resume_daily()
+                    self.assertEqual(waiting['decision'], 'manual_recovery_required')
+                    self.assertEqual(waiting['status'], 'needs_attention')
+                    unopened.assert_not_called()
+                self.assertEqual(daily.run_daily(status_only=True)['status'], 'complete')
                 confirmed = daily.resume_daily()
-                self.assertEqual(confirmed['decision'], 'executed')
+                self.assertEqual(confirmed['decision'], 'already_complete')
                 self.assertEqual(confirmed['status'], 'complete')
                 self.assertEqual(session.submissions, 1)
             db = Library(root / daily.DATABASE_NAME)
@@ -320,13 +327,15 @@ class DailyResumeTests(unittest.TestCase):
                 clock.now.return_value = NOW
                 first = daily.resume_daily(supplied_answer='Answer', expected_question='Synthetic question')
                 self.assertEqual(first['attempts'][0]['actions'][1]['status'], 'submission_unconfirmed')
+                clock.now.return_value = NOW + timedelta(minutes=1)
                 second = daily.resume_daily(supplied_answer='Answer', expected_question='Synthetic question')
                 self.assertEqual(second['error'], 'quiz_submission_unconfirmed')
                 self.assertEqual(session.submissions, 1)
                 session.rewarded = True
                 clock.now.return_value = NOW + timedelta(hours=1)
-                rewarded = daily.resume_daily()
-                self.assertTrue(rewarded['attempts'][0]['reward_verified']['quiz'])
+                self.assertEqual(daily.resume_daily()['decision'], 'manual_recovery_required')
+                rewarded = daily.run_daily(status_only=True)
+                self.assertTrue(rewarded['reward_verified']['quiz'])
                 self.assertNotEqual(rewarded['status'], 'complete')
                 db = Library(root / daily.DATABASE_NAME)
                 action = db.daily_history(123456, '2026-09-10', 1)['days'][0]['actions'][1]

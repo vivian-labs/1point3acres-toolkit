@@ -100,6 +100,12 @@ def _retry_due(day):
             db.close()
 
 
+def _quiz_attention(day, run_id):
+    return {'reason': 'quiz_submission_unconfirmed', 'account_uid': ACCOUNT_UID,
+            'site_day': day, 'run_id': run_id,
+            'message': '答题提交结果不明。先运行 status 核验；仍未完成时，可在网页完成答题，或确认重复提交风险后使用 daily --retry-quiz。'}
+
+
 def resume_daily(supplied_answer=None, expected_question=None):
     now = datetime.now(timezone.utc)
     day = site_day(now)
@@ -121,9 +127,20 @@ def resume_daily(supplied_answer=None, expected_question=None):
                 raise RuntimeError('site_day_changed')
             result['decision'] = ResumeDecision.ALREADY_COMPLETE
             return result
+        actions = {row['action']: row for row in (result['history'] or {}).get('actions', [])}
+        quiz, checkin = actions.get('quiz', {}), actions.get('checkin', {})
+        if quiz.get('unconfirmed_submission_run_id'):
+            result['attention'] = _quiz_attention(day, quiz['unconfirmed_submission_run_id'])
+            if (quiz.get('unconfirmed_checks', 0) >= 1
+                    and checkin.get('completed') and checkin.get('reward_verified')):
+                result.update(status=RunStatus.NEEDS_ATTENTION,
+                              decision=ResumeDecision.MANUAL_RECOVERY_REQUIRED,
+                              error='quiz_submission_unconfirmed')
+                return result
         retry_due = _retry_due(day)
         if supplied_answer is None and retry_due and now < retry_due:
-            result.update(decision=ResumeDecision.RECOVERY_WAIT, retry_at=retry_due.isoformat())
+            result.update(status=RunStatus.NEEDS_ATTENTION, decision=ResumeDecision.RECOVERY_WAIT,
+                          retry_at=retry_due.isoformat())
             return result
         for _ in range(DAILY_RETRY_LIMIT + 1):
             if site_day() != day:
@@ -133,6 +150,10 @@ def resume_daily(supplied_answer=None, expected_question=None):
             result['decision'] = ResumeDecision.EXECUTED
             result['attempts'].append(attempt)
             result.update(status=attempt['status'], error=attempt.get('error'))
+            if attempt.get('attention'):
+                result['attention'] = attempt['attention']
+            else:
+                result.pop('attention', None)
             if (attempt.get('error') not in DAILY_RETRY_ERRORS
                     or any(row['status'] == ActionStatus.SUBMISSION_UNCONFIRMED for row in attempt['actions'])):
                 break
@@ -141,7 +162,8 @@ def resume_daily(supplied_answer=None, expected_question=None):
     return result
 
 
-def run_daily(status_only=False, supplied_answer=None, expected_question=None, *, _expected_day=None):
+def run_daily(status_only=False, supplied_answer=None, expected_question=None, *, _expected_day=None,
+              retry_quiz=None, retry_day=None, retry_uid=None):
     started = datetime.now(timezone.utc)
     result = {'run_id': uuid4().hex, 'started_at': started.isoformat(), 'site_day': site_day(started),
               'status_only': status_only, 'actions': []}
@@ -182,6 +204,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
     def submit(entry, label):
         check_day()
         browser.check_active()
+        entry['submission_phase'] = 'click_started'
         result['actions'].append(entry)
         try:
             checkpoint()  # Durable before the browser may send anything, including if this process is killed.
@@ -193,6 +216,8 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
             raise
         try:
             browser.click_text(label)
+            entry['submission_phase'] = 'click_returned'
+            checkpoint()
         except RuntimeError as error:
             if str(error) == 'button_not_ready':
                 result['actions'].remove(entry)  # The browser explicitly did not click.
@@ -205,13 +230,17 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
         rewarded = verify_reward(account['uid'], spec.key, logs, now=started)
         observed_rewards = result.setdefault('reward_verified', {})
         observed_rewards[spec.key] = bool(observed_rewards.get(spec.key) or rewarded)
-        entry.update(completed=completed, rice_after=account['rice'],
+        entry.update(submission_checked=True, completed=completed, rice_after=account['rice'],
                      status=ActionStatus.REWARD_VERIFIED if completed and rewarded else
                             ActionStatus.REWARD_UNCONFIRMED if completed or rewarded else
                             ActionStatus.SUBMISSION_UNCONFIRMED)
         return completed and rewarded
 
     try:
+        if any(value is not None for value in (retry_quiz, retry_day, retry_uid)):
+            if (status_only or not retry_quiz or retry_day != result['site_day']
+                    or retry_uid != ACCOUNT_UID or not expected_question or not supplied_answer):
+                raise RuntimeError('invalid_quiz_recovery')
         if _expected_day is not None and result['site_day'] != _expected_day:
             raise RuntimeError('site_day_changed')
         learned = load_learned_answers(STATE / LEARNED_ANSWERS_NAME)
@@ -221,29 +250,45 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
         with browser:
             history = _day_history(result['site_day'])
             previous = {row['action']: row for row in history['actions']} if history else {}
+            if retry_quiz and previous.get('quiz', {}).get('unconfirmed_submission_run_id') != retry_quiz:
+                raise RuntimeError('quiz_recovery_stale')
             before = read_account()
             result['before'] = before
+            if retry_quiz:
+                if before['uid'] != retry_uid:
+                    raise RuntimeError('invalid_quiz_recovery')
+                logs = browser.credit_logs()
+                before = read_account()
+                result['reward_verified'] = {
+                    'quiz': verify_reward(before['uid'], 'quiz', logs, now=started)}
             asked = answered = None
             for action_spec in ACTIONS:
                 action, flag, route = action_spec.key, action_spec.flag, action_spec.route
                 account = read_account()
                 prior = previous.get(action, {})
-                if account['app_status'].get(flag) or prior.get('completed') or prior.get('reward_verified'):
+                if (account['app_status'].get(flag) or prior.get('completed') or prior.get('reward_verified')
+                        or result.get('reward_verified', {}).get(action)):
                     known_complete = bool(account['app_status'].get(flag) or prior.get('completed'))
                     result['actions'].append({'action': action, 'completed': known_complete,
                         'status': ActionStatus.ALREADY_DONE if known_complete else ActionStatus.REWARD_UNCONFIRMED})
                     if action == 'checkin' and known_complete:
                         note_checkin(account)
                     continue
-                if prior.get('unconfirmed_submission_run_id'):
+                if prior.get('unconfirmed_submission_run_id') and not (action == 'quiz' and retry_quiz):
                     # Missing receipts cannot prove the server did not execute a request.
                     result['actions'].append({'action': action, 'status': ActionStatus.SUBMISSION_UNCONFIRMED})
                     continue
                 if status_only:
                     result['actions'].append({'action': action, 'status': ActionStatus.NOT_DONE})
                     continue
+                if retry_quiz and action != 'quiz':
+                    result['actions'].append({'action': action, 'status': ActionStatus.NOT_DONE})
+                    continue
                 browser.goto(SITE + '/next/' + route)
                 entry = {'action': action, 'status': ActionStatus.SUBMISSION_UNCONFIRMED}
+                if action == 'quiz' and retry_quiz:
+                    # Consumed only with the durable click intent, under the browser/account lock.
+                    entry['retry_of'] = retry_quiz
                 if action == 'checkin':
                     plan = _checkin_plan(result['site_day'])
                     mood, phrase = plan['mood'], plan['phrase']
@@ -277,6 +322,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                         result['actions'].append({'action': action, 'status': ActionStatus.ANSWER_NEEDED, 'question': question['qc'], 'options': options})
                         continue
                     asked, answered = question['qc'], options[choice]
+                    entry['question'] = asked
                     browser.wait_for("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()===" + json.dumps(options[choice]) + ")", allow_solver=False)
                     browser.click_text(options[choice])
                     browser.wait_for("[...document.querySelectorAll('button')].some(e=>e.textContent.trim()==='提交答案'&&!e.disabled)", allow_solver=False)
@@ -300,6 +346,8 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                             pass
                         solver_attempted = True
                 entry['response_seen'] = path in browser.ids
+                if entry['response_seen']:
+                    entry['submission_phase'] = 'response_seen'
                 checkpoint()
                 if path not in browser.ids:
                     submission_checks += 1
@@ -344,6 +392,12 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
     except Exception as error:
         result['status'] = RunStatus.FAILED
         result['error'] = format_error(error)
+    pending = next((row for row in result['actions']
+                    if row['action'] == 'quiz' and row['status'] == ActionStatus.SUBMISSION_UNCONFIRMED), None)
+    if pending:
+        run_id = (result['run_id'] if pending.get('submission_phase') else
+                  previous.get('quiz', {}).get('unconfirmed_submission_run_id'))
+        result['attention'] = _quiz_attention(result['site_day'], run_id)
     result['recovery'] = recovery_summary(browser.read_retries if browser else 0, submission_checks)
     result['finished_at'] = datetime.now(timezone.utc).isoformat()
     result['history_saved'] = False

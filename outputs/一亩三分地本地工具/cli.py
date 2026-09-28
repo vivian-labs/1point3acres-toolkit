@@ -42,6 +42,9 @@ def main():
     daily.add_argument('--answer')
     daily.add_argument('--question')
     daily.add_argument('--resume', action='store_true')
+    daily.add_argument('--retry-quiz', metavar='RUN_ID', help='确认重复提交风险后，仅重试指定未确认记录一次；必须同时指定账号、站点日、原题和答案')
+    daily.add_argument('--site-day', help='恢复记录的洛杉矶日期 YYYY-MM-DD，必须为今天')
+    daily.add_argument('--account-uid', type=int, help='恢复记录所属账号 uid')
     collect = commands.add_parser('collect-stripe')
     collect.add_argument('--limit', type=int, default=COLLECT_LIMIT)
     collect.add_argument('--list-pages', type=int, default=LIST_PAGES)
@@ -170,7 +173,13 @@ def main():
                   f'最多等待 {args.wait} 秒，Ctrl+C 取消。', file=sys.stderr)
         result = session_login(method=args.method, wait_seconds=args.wait, qr_path=args.qr_path)
     elif args.command in ['daily', 'status']:
-        if getattr(args, 'resume', False):
+        recovery = {key: getattr(args, arg, None) for key, arg in
+                    [('retry_quiz', 'retry_quiz'), ('retry_day', 'site_day'), ('retry_uid', 'account_uid')]}
+        if any(value is not None for value in recovery.values()):
+            if args.resume:
+                parser.error('--retry-quiz 只能手动使用，不可与 --resume 同用')
+            result = run_daily(False, args.answer, args.question, **recovery)
+        elif getattr(args, 'resume', False):
             result = resume_daily(args.answer, args.question)
         else:
             result = run_daily(args.command == 'status', getattr(args, 'answer', None), getattr(args, 'question', None))
