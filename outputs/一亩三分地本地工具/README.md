@@ -427,6 +427,12 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 **发布新版本（维护者）**：推送 GitHub 代码不会更新软件包用户，必须发布到 PyPI。先通过完整离线检查与回归，把仓库根目录 `pyproject.toml` 和 `server.json` 里的版本号一起改，检查命令会核对两者一致，以及依赖、入口命令、目录映射和登记一致。然后在仓库根目录 `python -m build` 生成 wheel 和 sdist，`twine upload dist/*` 传到 PyPI，再打同名 tag 发 GitHub Release。`server.json` 保留明确的发布版本，目录安装可能固定该版本；只有配置为 `@latest` 的入口才采用这里的启动时更新策略。MCP 官方目录读的是 `server.json`：装好 `mcp-publisher`，`mcp-publisher login github` 用有 vivian-labs 组织权限的账号登录，然后 `mcp-publisher publish`。PyPI 页面上的说明来自 `PYPI_README.md`，末尾那行 `mcp-name:` 是目录核对包归属用的，不能删。
 
+### GitHub 自动发布到 PyPI
+
+维护者推荐使用 `.github/workflows/publish.yml`，通过 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/) 发布，无需长期 API token。首次在 PyPI 账号的 Publishing 页面添加 pending publisher：项目名 `1point3acres-toolkit`、GitHub owner `vivian-labs`、仓库 `1point3acres-toolkit`、工作流 `publish.yml`、环境 `pypi`。GitHub 的 `pypi` 环境仅允许 `main` 分支部署。
+
+先发布对应版本的 GitHub Release，确保标签对应提交的 Project consistency 检查全部通过，然后运行 `gh workflow run publish.yml --ref main -f tag=v1.1.0`（替换为实际版本）。工作流核对标签、软件包版本和 CI，构建并检查 wheel/sdist，再由独立发布任务获取短期 OIDC 身份上传。失败时检查 Actions 日志；只有 PyPI 页面出现该版本，才算完成软件包发布。MCP 官方目录登记仍按上面的步骤单独进行。
+
 ### 提交中断恢复
 
 签到确认后，从 30–70 秒均匀抽取一次等待时间，把确认时间、间隔和截止时间写入当日计划。答题准备完成后只等待剩余部分；重启、补答复用截止时间，已经过去则不再等待。原有待确认签到仍保留保护，独立答题以首次恢复观察作为保守计时起点。网络处理可能使实际间隔更长。只读查询不等待；等待跨站点日时停止提交，系统时钟大幅回拨时返回 `daily_clock_changed`，留待后续正常触发恢复。

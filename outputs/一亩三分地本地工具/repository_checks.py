@@ -56,7 +56,7 @@ def workflow_errors(content):
     if re.search(r'pull_request_target\s*:|secrets\s*:|secrets\.|self-hosted|continue-on-error\s*:\s*true', content):
         errors.append('unsafe_workflow_boundary')
     for action in re.findall(r'uses:\s*([^\s#]+)', content):
-        if not re.fullmatch(r'actions/[a-z-]+@[0-9a-f]{40}|\./\.github/actions/[a-z-]+', action):
+        if not re.fullmatch(r'(?:actions/[a-z-]+|pypa/gh-action-pypi-publish)@[0-9a-f]{40}|\./\.github/actions/[a-z-]+', action):
             errors.append('unpinned_or_unregistered_action')
     return errors
 

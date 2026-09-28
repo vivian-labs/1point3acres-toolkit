@@ -261,6 +261,7 @@
       ".gitattributes",
       ".github/actions/setup-toolkit/action.yml",
       ".github/workflows/consistency.yml",
+      ".github/workflows/publish.yml",
       ".gitignore",
       "README.md",
       "LICENSE",

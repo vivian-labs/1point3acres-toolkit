@@ -1,0 +1,84 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag whose commit passed Project consistency
+        required: true
+        default: v1.1.0
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: Require matching release version and successful CI for this commit
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess, tomllib
+          from pathlib import Path
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Use a stable release tag'
+          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          tagged = subprocess.check_output(['git', 'rev-parse', 'refs/tags/' + tag + '^{commit}'], text=True).strip()
+          assert sha == tagged, 'Checkout does not match tag'
+          metadata = tomllib.loads(Path('pyproject.toml').read_text())
+          assert tag == 'v' + metadata['project']['version'], 'Tag/version mismatch'
+          registry = json.loads(Path('server.json').read_text())
+          assert registry['version'] == metadata['project']['version']
+          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,isPrerelease']))
+          assert not release['isDraft'] and not release['isPrerelease'], 'Publish a stable GitHub Release first'
+          runs = json.loads(subprocess.check_output(['gh', 'run', 'list', '--commit', sha, '--workflow', 'consistency.yml', '--limit', '100', '--json', 'status,conclusion,headSha']))
+          assert any(r['headSha'] == sha and r['status'] == 'completed' and r['conclusion'] == 'success' for r in runs), 'No successful CI for release commit'
+          PY
+      - name: Build and validate distributions
+        run: |
+          python -m pip install build==1.6.1 twine==7.0.0
+          python -m build --outdir dist
+          python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pypi-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/1point3acres-toolkit/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: pypi-distributions
+          path: dist
+      - name: Publish through PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33

@@ -109,9 +109,11 @@ class CIPolicyTests(unittest.TestCase):
     def test_workflow_rejects_credentials_and_unpinned_actions(self):
         scan = self.policy_module().workflow_errors
         for source in ['on:\n  pull_request_target:', 'secrets: inherit', 'continue-on-error: true',
-                       'runs-on: self-hosted', 'uses: actions/checkout@main']:
+                       'runs-on: self-hosted', 'uses: actions/checkout@main',
+                       'uses: pypa/gh-action-pypi-publish@release/v1', 'uses: other/publisher@' + 'a' * 40]:
             with self.subTest(source=source):
                 self.assertTrue(scan(source))
+        self.assertEqual(scan('uses: pypa/gh-action-pypi-publish@' + 'a' * 40), [])
         self.assertEqual(scan('uses: actions/checkout@' + 'a' * 40 + '\nuses: ./.github/actions/setup-toolkit'), [])
 
     def test_installed_dependency_drift_is_rejected(self):
