@@ -6,7 +6,7 @@
 
 依赖清单见 [requirements.txt](./requirements.txt)。想先看带图的原理讲解（签到、答题、奖励核对、失败重试、调度各是怎么做的），读仓库根目录的 [README](../../README.md)；本文是操作手册。
 
-目录：[工作原理](#principle) · [交给 AI](#ai) · [手动安装](#install) · [软件包安装](#pip) · [配置账号](#account) · [首次运行](#first-run) · [每日自动](#automation) · [面经](#interviews) · [命令参考](#commands) · [MCP](#mcp) · [排查](#troubleshooting) · [维护](#maintenance)
+目录：[工作原理](#principle) · [交给 AI](#ai) · [源码安装](#install) · [软件包安装](#pip) · [配置账号](#account) · [首次运行](#first-run) · [每日自动](#automation) · [面经](#interviews) · [命令参考](#commands) · [MCP](#mcp) · [排查](#troubleshooting) · [维护](#maintenance)
 
 <a id="principle"></a>
 
@@ -21,20 +21,31 @@
 
 <a id="ai"></a>
 
-## 最快：交给 AI 助手
+## 最快：交给 AI 助手，默认自动更新
 
-把仓库交给一个能在本机执行命令的 AI 编程助手（Claude Code、Codex 等），直接说“装好并配置每天自动签到答题”。它会替你完成克隆、建 Python 环境、装依赖、跑安装检查、部署每日计划。
+把项目链接或仓库交给一个能在本机执行命令的 AI 编程助手（Claude Code、Codex 等），直接说“装好并配置每天自动签到答题，启用自动更新”。普通用户默认安装已发布的软件包；拿到仓库是为了阅读说明，不代表需要从源码运行。
+
+**安装助手按以下步骤执行：**
+
+1. 检查 Chrome、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，补齐缺少的运行环境，找到 `uvx` 的绝对路径。
+2. 执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 验证软件包能启动。后续命令使用同一前缀；不要把 uv 缓存目录里的 Python 或脚本路径保存成启动入口。
+3. 按 [软件包安装](#pip) 和 [配置账号](#account) 设置个人数据目录、账号和登录。已有安装先按迁移步骤保留数据；MCP 和每日计划使用同一个数据目录。
+4. 将 MCP 注册为 `uvx 1point3acres-toolkit@latest`，保留客户端其他配置和环境变量；连接后用 `runtime_info` 核对版本。
+5. 按 [首次运行](#first-run) 验证登录和每日任务，再按 [每日自动运行](#automation) 创建唯一的系统每日计划，入口必须是 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume`。
+6. 读回客户端注册和系统任务，确认两处都使用 `@latest`、`uvx` 绝对路径和相同数据目录；报告安装版本、任务是否启用，以及 MCP 在重连时更新。不能只执行一次安装命令就宣称已经配置自动更新。
+
+默认不使用 `git clone` + 虚拟环境、单独 `pip install` 或 `uv tool install` 作为用户的自动更新方案。这些方式以及固定版本仅在用户明确选择时使用。`@latest` 在每次启动时检查最新兼容发布版本，有新版时由 uv 准备并运行；每日任务会在下一次触发时更新，常驻 MCP 需要重连。需要联网获取新版；GitHub 提交只有发布到 PyPI 后才会到达用户。
 
 你只需要参与两件事：
 
 - 提供自己的论坛用户名和数字 uid（写进 `account.json`）。
 - 在助手弹出的安全输入框里输一次论坛密码。密码直接进系统钥匙串 / DPAPI，不进仓库、不进对话、助手也不经手明文。
 
-之后由计划自动运行；电脑需要可用，异常由健康观察报告。想自己动手，按下面的手动步骤来，结果完全一样。
+之后由计划自动运行；电脑需要可用，异常由健康观察报告。想自己动手并保持自动更新，按 [软件包安装](#pip) 配置；下面的源码安装供开发者使用，需要手动更新。
 
 <a id="install"></a>
 
-## 手动安装
+## 源码安装（开发者，手动更新）
 
 前置：装好 Git、Chrome、Python 3.12（macOS 用 `python3.12`，Windows 用 `py -3.12`）。
 
@@ -199,14 +210,32 @@ cd outputs/一亩三分地本地工具
 
 失败后按 5、10、20、40、60 分钟逐步延长恢复间隔，上限 60 分钟。间隔依据已保存的运行记录计算，重启不重置；等待期返回 `decision=recovery_wait`、`status=needs_attention` 和 `retry_at`，不开浏览器，不表示签到答题已成功。只读查询不计入失败次数；明确提供完整原题和答案的补答可直接核对并尝试，仍受提交保护约束。
 
-思路：让操作系统每分钟跑一次 `运行.sh daily --resume`（Windows 用 `运行.cmd`）。这个命令自己判断是否到点、当天是否已完成，`not_due` / `already_complete` 时直接安静退出、不开浏览器，只有真正该签到时才动作。等待与已完成状态都不产生站点请求。手动 `daily` 不受随机窗口约束；定时计划必须使用 `daily --resume`。
+思路：让操作系统每分钟通过 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume` 启动一次。uvx 先检查软件包更新，工具再判断是否到点、当天是否已完成；`not_due` / `already_complete` 时不开浏览器，只有真正该签到时才动作。等待与已完成状态不产生论坛请求，但启动器仍可能访问包索引。手动 `daily` 不受随机窗口约束；定时计划必须使用 `daily --resume`。
 
 **uvx 软件包版**：定时任务的程序填 `uvx` 的绝对路径，参数依次填写 `--from`、`1point3acres-toolkit@latest`、`1point3acres-toolkit-cli`、`daily`、`--resume`。macOS 可用 `command -v uvx`，Windows 可用 `where.exe uvx` 查找路径。任务与 MCP 必须使用同一个 `ONEPOINT3ACRES_HOME`（或都使用默认目录），并设置 `PYTHONUTF8=1`；替换旧任务，避免重复执行。每次触发都会检查软件包更新，可能访问包索引，有网络和启动开销；业务层的“未到点只读本地记录”不包含 uvx 的更新检查。若不希望每分钟检查更新，可使用 pip 安装版的绝对入口路径，并按维护步骤手动升级。
 
-- **交给 AI 助手最省事**：让它按你的系统装好计划（macOS 用 launchd LaunchAgent，Windows 用任务计划程序），指向工具目录的 `运行.sh daily --resume`。
-- **自己配**：macOS 写一个 LaunchAgent（`RunAtLoad` + `StartInterval` 60 秒）调用上面的命令，样例见下；Windows 使用下面的安装脚本。计划时间在 `account.json` 里配（见[配置账号](#account)）；跑一次 `检查.cmd --sync`（macOS 用 `./检查.sh --sync`），输出的 `schedule` 段给出当前模式、时区、轮询间隔与 rrule。随机模式的具体时间按账号与站点日保存在本机数据库，不在每次检查时重抽。
+- **交给 AI 助手最省事**：让它按你的系统装好计划（macOS 用 launchd LaunchAgent，Windows 用任务计划程序），使用上面的 uvx 自动更新入口，并读回任务配置核对。
+- **自己配**：按下面的软件包配置或样例创建任务。计划时间在 `account.json` 里配（见[配置账号](#account)）；执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info`，输出的 `schedule` 段给出当前模式、时区、轮询间隔与 rrule。随机模式的具体时间按账号与站点日保存在本机数据库，不在每次检查时重抽。
 
-### Windows：安装无控制台窗口的每日计划
+### Windows：软件包每日计划（默认自动更新）
+
+在任务计划程序中创建当前用户的任务，或让安装助手使用系统的 ScheduledTasks 命令创建，配置如下：
+
+| 项目 | 配置 |
+|:--|:--|
+| 名称 | `1point3acres-toolkit-daily`；迁移时先停用旧任务并等待运行结束，再替换 |
+| 程序 | `where.exe uvx` 返回的 `uvx.exe` 绝对路径 |
+| 参数 | `--from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume` |
+| 触发 | 每 1 分钟重复，无限期；错过后尽快启动 |
+| 身份 | 当前用户，仅在用户登录时运行，无需管理员权限 |
+| 并发 | 已在运行时不启动新实例 |
+| 时限 | 至少覆盖 `info` 的 `daily_run_timeout × (daily_retry_limit + 1) + 120` 秒，并为下载安装预留时间 |
+
+任务必须设置 `PYTHONUTF8=1`；若 MCP 设置了 `ONEPOINT3ACRES_HOME`，任务也要传入相同值。任务计划程序没有单独的环境变量输入栏，可让助手在个人数据目录创建本机 PowerShell 启动脚本，在脚本中设置这两个变量后用 `&` 调用 uvx 的绝对路径及上述参数，并以 `exit $LASTEXITCODE` 返回结果；任务通过 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File` 调用该脚本。不要将密码写入脚本或任务参数。
+
+安装完成后读回任务的程序、参数和包装脚本，核对 `@latest`。仅在终端跑过一次 uvx、任务仍指向旧 `pythonw.exe`，并没有启用任务自动更新。电脑需开机且当前用户已登录；休眠、注销时不能保证执行。任务退出成功不等于奖励到账，用 `daily-history` 核对业务结果。
+
+### Windows：源码版每日计划（开发者，手动更新）
 
 在工具目录的 PowerShell 中执行：
 
@@ -231,9 +260,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\计划.ps1 -Action Rem
 
 卸载先禁用后续触发；若还有运行中的实例，会报错并要求等待当前运行结束，再执行 `Remove`。不要在它仍运行时更新依赖或移动源码。移除成功后保留账号、会话与历史；恢复时重新 `Install`。移动仓库前应先移除旧计划，移动后重新安装。
 
-### macOS：LaunchAgent
+### macOS：LaunchAgent（默认自动更新）
 
-macOS LaunchAgent 样例，存为 `~/Library/LaunchAgents/local.1point3acres-toolkit.daily.plist`，把 `/REPO` 换成仓库的绝对路径（日志落在不入库的 `work/`）：
+macOS LaunchAgent 样例，存为 `~/Library/LaunchAgents/local.1point3acres-toolkit.daily.plist`。把 `/ABSOLUTE/PATH/uvx` 换成 `command -v uvx` 返回的绝对路径，把 `/DATA_HOME` 换成个人数据目录的绝对路径并提前创建该目录；MCP 使用相同的 `ONEPOINT3ACRES_HOME`。plist 中不能使用 `~` 或 `$HOME` 代替绝对路径，路径含 `&` 等 XML 特殊字符时需要转义。
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -243,19 +272,30 @@ macOS LaunchAgent 样例，存为 `~/Library/LaunchAgents/local.1point3acres-too
   <key>Label</key><string>local.1point3acres-toolkit.daily</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/REPO/outputs/一亩三分地本地工具/运行.sh</string>
+    <string>/ABSOLUTE/PATH/uvx</string>
+    <string>--from</string>
+    <string>1point3acres-toolkit@latest</string>
+    <string>1point3acres-toolkit-cli</string>
     <string>daily</string>
     <string>--resume</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUTF8</key><string>1</string>
+    <key>ONEPOINT3ACRES_HOME</key><string>/DATA_HOME</string>
+  </dict>
   <key>RunAtLoad</key><true/>
   <key>StartInterval</key><integer>60</integer>
-  <key>StandardOutPath</key><string>/REPO/work/launchd-daily.log</string>
-  <key>StandardErrorPath</key><string>/REPO/work/launchd-daily.log</string>
+  <key>StandardOutPath</key><string>/DATA_HOME/launchd-daily.log</string>
+  <key>StandardErrorPath</key><string>/DATA_HOME/launchd-daily.log</string>
 </dict>
 </plist>
 ```
 
-装载：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.1point3acres-toolkit.daily.plist`；停用：`launchctl bootout gui/$(id -u)/local.1point3acres-toolkit.daily`。改过 plist 要先停用再装载。要用下面的 `pmset` / `caffeinate` 加固时，把 `ProgramArguments` 换成你的包装脚本。
+装载：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.1point3acres-toolkit.daily.plist`；停用：`launchctl bootout gui/$(id -u)/local.1point3acres-toolkit.daily`。改过 plist 要先停用再装载，再用 `launchctl print gui/$(id -u)/local.1point3acres-toolkit.daily` 核对已加载的程序和参数。要用下面的 `pmset` / `caffeinate` 加固时，把 `ProgramArguments` 换成你的包装脚本，脚本仍须调用 uvx 的 `@latest` 入口。
+
+开发者使用源码时，将 `ProgramArguments` 改为仓库内 `运行.sh` 的绝对路径、`daily`、`--resume`，并使数据目录与源码版 MCP 一致。这种配置需要手动更新仓库，不具备软件包自动更新能力。
+
 - **macOS 可选加固（写在本机包装脚本里，不进仓库）**：合盖后的短暂后台唤醒（DarkWake）里也可能触发计划，脚本开头加 `pmset -g systemstate | grep -q Graphics || exit 0` 可以避开；用 `caffeinate -i` 包住运行命令能防止空闲睡眠（合盖仍会睡，只是减少中途被打断的概率）。另外，工具的 Chrome 在后台运行时，从 Dock / Spotlight 打开 Chrome 会进入工具的专用配置目录（同一个应用只保留一个实例）：想开自己的 Chrome，等任务结束，或用 `open -na "Google Chrome"` 另起一个实例；如果发现自己的登录落进了 `work/account-browser/chrome-profile`，在那个实例里退出登录即可。
 - **macOS 窗口行为**：系统不允许把窗口放到屏幕外，所以专用 Chrome 启动瞬间会短暂出现并切到前台（约 1 秒），随后自动最小化到 Dock、把焦点还给你之前正在用的应用；这个瞬间无法消除。微信扫码登录时窗口会被调到屏幕上，结束后同样最小化。Windows 上窗口始终隐藏。
 
@@ -407,7 +447,7 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 | `daily_run_timeout` | 单次每日运行超过截止并强制结束；尚未提交时重试一次，提交结果不明时保留保护 |
 | `quiz_submission_unconfirmed` / `manual_recovery_required` | 先运行 `status` 核验，再按 [人工恢复步骤](#quiz-recovery) 处理 |
 | `consistency_check_failed` | 跑 `检查.sh`，按提示修；派生文件过期时加 `--sync` |
-| 自动计划没跑 | 确认计划已启用、指向本地工具目录、电脑当时可用；`not_due` 不是故障 |
+| 自动计划没跑 | 确认计划已启用、启动程序的绝对路径有效、电脑当时可用；uvx 入口还需能准备软件包，`not_due` 不是故障 |
 
 提 Issue 时给出系统 / Python / Chrome 版本、`git rev-parse --short HEAD`、用到的命令和脱敏后的 `status` / `error`，先搜有没有相同 Issue，不要贴账号配置或完整 JSON。
 
