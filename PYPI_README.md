@@ -22,7 +22,13 @@ Recommended for users: run the MCP server straight from PyPI:
 uvx 1point3acres-toolkit@latest
 ```
 
-Or install it into an environment of your own:
+**AI-assisted installation defaults to automatic updates.** When a user supplies this project and asks for setup,
+use the `uvx …@latest` entries for both MCP and the daily scheduler. Follow the
+[installation checklist](https://github.com/vivian-labs/1point3acres-toolkit/blob/main/outputs/一亩三分地本地工具/README.md#ai),
+preserve existing data, and read back the saved client and scheduler configuration before reporting completion.
+Use source checkouts or fixed installations only when requested. A one-time install does not configure automatic updates.
+
+Alternatively, for a manually maintained environment:
 
 ```sh
 pip install 1point3acres-toolkit
