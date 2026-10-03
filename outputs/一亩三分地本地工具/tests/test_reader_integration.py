@@ -12,6 +12,7 @@ from seleniumbase import sb_cdp
 from library import merge_pages
 from presentation import render_reader
 from settings import CHROME, WINDOWS
+from browser import Browser
 
 
 def _process_metrics(process):
@@ -148,6 +149,59 @@ def start_reader_browser(page, profile):
 
 
 class ReaderIntegrationTests(unittest.TestCase):
+    def test_button_click_is_trusted_exact_and_refuses_unsafe_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            page = root / 'buttons.html'
+            page.write_text('''<!doctype html><meta charset="utf-8">
+                <button>提交签到（其他）</button><button style="display:none">提交签到</button>
+                <div style="height:1800px"></div><button id="target"><span>提交签到</span></button>
+                <script>window.accepted=0;window.trusted=null;
+                document.addEventListener('click',e=>{window.trusted=e.isTrusted;
+                  if(e.target.closest('button')?.id==='target' && e.isTrusted) window.accepted++;
+                });</script>''', encoding='utf-8')
+            driver, process = start_reader_browser(page, root / 'profile')
+            session = Browser(recover_login=False)
+            session.sb = driver
+            try:
+                session._send(mycdp.network.enable())
+                session._send(mycdp.network.set_blocked_urls(['http://*', 'https://*']))
+                session.click_text('提交签到')
+                self.assertEqual(session.evaluate('window.accepted'), 1)
+                self.assertTrue(session.evaluate('window.trusted'))
+                session.evaluate("document.getElementById('target').disabled=true")
+                with self.assertRaisesRegex(RuntimeError, '^button_not_ready$'):
+                    session.click_text('提交签到')
+                session.evaluate("document.getElementById('target').disabled=false;const c=document.createElement('div');c.style='position:fixed;inset:0;z-index:9999';document.body.append(c)")
+                with self.assertRaisesRegex(RuntimeError, '^button_not_ready$'):
+                    session.click_text('提交签到')
+                self.assertEqual(session.evaluate('window.accepted'), 1)
+                session.evaluate("""document.body.lastElementChild.remove();
+                    document.getElementById('target').addEventListener('mouseenter',()=>{
+                        const replacement=document.createElement('button');replacement.textContent='提交签到';
+                        replacement.style='position:fixed;inset:0;z-index:9999';
+                        replacement.onclick=()=>window.accepted++;
+                        document.body.append(replacement);
+                    },{once:true})""")
+                session._send(mycdp.input_.dispatch_mouse_event('mouseMoved', 0, 0))
+                with self.assertRaisesRegex(RuntimeError, '^button_not_ready$'):
+                    session.click_text('提交签到')
+                self.assertEqual(session.evaluate('window.accepted'), 1)
+                session.evaluate("document.body.lastElementChild.remove();document.getElementById('target').textContent='__KEY__'")
+                session.click_text('__KEY__')
+                self.assertEqual(session.evaluate('window.accepted'), 2)
+            finally:
+                try:
+                    driver.loop.run_until_complete(asyncio.wait_for(
+                        driver.driver.connection.send(mycdp.browser.close()), timeout=5))
+                finally:
+                    if process.poll() is None:
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait(timeout=5)
+
     def test_offline_reader_search_permissions_empty_state_and_mobile(self):
         self.assertTrue(CHROME.is_file(), 'Chrome is required for reader integration checks')
         rows = []
