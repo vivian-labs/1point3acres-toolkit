@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
+from uuid import uuid4
 
 import mycdp
 import requests
@@ -707,9 +708,37 @@ class Browser:
         raise RuntimeError('credit_log_data_missing')
 
     def click_text(self, text):
-        expression = "(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===" + json.dumps(text) + ");if(!b||b.disabled)return false;b.click();return true;})()"
-        if not self.evaluate(expression):
+        # Site submit handlers reject synthetic HTMLElement.click() events. Use browser input,
+        # still targeting exact DOM text, with no desktop mouse, fallback click or retry.
+        label = json.dumps(text)
+        target_key = json.dumps('__1p3a_click_' + uuid4().hex)
+        matches = """[...document.querySelectorAll('button')].filter(b=>{
+                const r=b.getBoundingClientRect(),s=getComputedStyle(b);
+                return b.textContent.trim()===__LABEL__ && r.width>0 && r.height>0
+                    && s.visibility==='visible' && s.display!=='none' && s.opacity!=='0';
+            })""".replace('__LABEL__', label)
+        point = self.evaluate("""(()=>{
+            const matches=__MATCHES__;
+            if(matches.length!==1 || matches[0].disabled)return null;
+            const b=matches[0];b.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
+            const r=b.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+            if(!b.contains(document.elementFromPoint(x,y)))return null;
+            window[__KEY__]=b;return {x,y};
+        })()""".replace('__KEY__', target_key).replace('__MATCHES__', matches))
+        if not point:
             raise RuntimeError('button_not_ready')
+        x, y = point['x'], point['y']
+        self._send(mycdp.input_.dispatch_mouse_event('mouseMoved', x, y))
+        # Hover can reveal an overlay. Refuse before mouse-down if the target changed.
+        ready = self.evaluate("(()=>{const b=window[" + target_key + '];delete window[' + target_key
+                              + '];const matches=' + matches + ';return matches.length===1&&matches[0]===b&&!b.disabled'
+                              + '&&b.contains(document.elementFromPoint(' + json.dumps(x) + ',' + json.dumps(y) + '));})()')
+        if not ready:
+            raise RuntimeError('button_not_ready')
+        self._send(mycdp.input_.dispatch_mouse_event('mousePressed', x, y,
+                                                   button=mycdp.input_.MouseButton.LEFT, buttons=1, click_count=1))
+        self._send(mycdp.input_.dispatch_mouse_event('mouseReleased', x, y,
+                                                   button=mycdp.input_.MouseButton.LEFT, buttons=0, click_count=1))
 
     def read_bytes(self, url, max_bytes):
         """One media file from the site's own hosts, fetched once with the session cookies and returned
