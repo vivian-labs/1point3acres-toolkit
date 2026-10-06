@@ -53,6 +53,7 @@ class SessionLogoutTests(unittest.TestCase):
         self.replace('browser.requests.Session')
         chrome = self.replace('browser.sb_cdp.Chrome')
         chrome.return_value.loop.run_until_complete.side_effect = lambda awaitable: awaitable.close()
+        self.replace('browser.Browser._activate_page')
         self.replace('browser.Browser.goto')
         self.jar = CookieJar(SITE_COOKIES + OTHER_COOKIES)
         self.replace('browser.Browser._cdp', side_effect=self.jar.send)

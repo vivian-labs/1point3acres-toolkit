@@ -169,6 +169,9 @@ class Browser:
                 headless=False, user_data_dir=str(PROFILE), browser_executable_path=str(CHROME), lang='zh-CN')
             self.sb.bring_active_window_to_front = lambda: None
             self.sb.add_handler(mycdp.network.ResponseReceived, self._response)
+            # A hidden/minimized OS window can suspend page input and verification callbacks.
+            # Keep this owned page active without activating the user's desktop window.
+            self._activate_page()
             if MACOS:
                 self._park_window()
             self.goto(self.entry_url)
@@ -219,6 +222,15 @@ class Browser:
         except Exception:
             # The bound expired, the watchdog stopped the loop, or the driver could not reconnect.
             raise BrowserConnectionError('daily_run_timeout' if self.expired else 'browser_connection_lost') from None
+
+    def _activate_page(self):
+        def activate():
+            # The driver returns None for both void replies and swallowed protocol errors.
+            # Return True only after the focus command receives its successful reply.
+            yield from mycdp.emulation.set_focus_emulation_enabled(True)
+            return True
+        if self._send(activate()) is not True:
+            raise BrowserConnectionError('browser_connection_lost')
 
     def _watch(self):
         """Daemon thread. Past the deadline it ends the session from outside and keeps doing so until __exit__

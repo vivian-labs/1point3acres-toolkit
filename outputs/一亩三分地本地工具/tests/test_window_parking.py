@@ -122,6 +122,7 @@ class LaunchTests(unittest.TestCase):
         chrome = self.replace('browser.sb_cdp.Chrome')
         chrome.return_value.loop.run_until_complete.side_effect = lambda awaitable: awaitable.close()
         self.replace('browser.Browser.goto')
+        self.replace('browser.Browser._activate_page')  # This fixture isolates OS launch and parking behavior.
         self.park = self.replace('browser.Browser._park_window')
         self.front = self.replace('browser._front_app', return_value='com.example.editor')
 

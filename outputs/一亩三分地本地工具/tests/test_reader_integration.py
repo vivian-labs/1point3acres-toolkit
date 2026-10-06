@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import mycdp
@@ -12,7 +13,7 @@ from seleniumbase import sb_cdp
 from library import merge_pages
 from presentation import render_reader
 from settings import CHROME, WINDOWS
-from browser import Browser
+from browser import Browser, _front_app
 
 
 def _process_metrics(process):
@@ -149,6 +150,28 @@ def start_reader_browser(page, profile):
 
 
 class ReaderIntegrationTests(unittest.TestCase):
+    def test_parked_browser_delivers_trusted_input_without_desktop_activation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            page = root / 'background-input.html'
+            page.write_text('''<!doctype html><meta charset="utf-8">
+                <div style="height:550px"></div><button id="choice">Choose</button>
+                <button id="submit" disabled>Submit</button><script>
+                window.accepted=0;document.getElementById('choice').onclick=e=>{
+                    if(e.isTrusted){window.accepted++;document.getElementById('submit').disabled=false}
+                };</script>''', encoding='utf-8')
+            with patch('browser.STATE', root / 'state'), patch('browser.PROFILE', root / 'profile'), \
+                    patch('browser.USERNAME', 'synthetic-user'), patch('browser.ACCOUNT_UID', 123), \
+                    patch.object(Browser, 'goto', lambda b, _: b.sb.get(page.as_uri())):
+                with Browser(recover_login=False, deadline=90) as session:
+                    self.assertEqual(session.evaluate('document.visibilityState'), 'visible')
+                    foreground = ctypes.windll.user32.GetForegroundWindow() if WINDOWS else _front_app()
+                    session.click_text('Choose')
+                    self.assertEqual(session.evaluate('window.accepted'), 1)
+                    self.assertFalse(session.evaluate("document.getElementById('submit').disabled"))
+                    after = ctypes.windll.user32.GetForegroundWindow() if WINDOWS else _front_app()
+                    self.assertEqual(after, foreground)
+
     def test_button_click_is_trusted_exact_and_refuses_unsafe_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
