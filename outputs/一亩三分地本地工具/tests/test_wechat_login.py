@@ -34,6 +34,7 @@ class WechatLoginTests(unittest.TestCase):
         self.replace('browser.requests.Session')
         chrome = self.replace('browser.sb_cdp.Chrome')
         chrome.return_value.loop.run_until_complete.side_effect = lambda awaitable: awaitable.close()
+        self.replace('browser.Browser._activate_page')
         self.navigate = self.replace('browser.Browser.goto')
         self.window = self.replace('browser.Browser.set_window_visible')
         self.capture = self.replace('browser.Browser.capture_png', return_value=b'synthetic-png')

@@ -34,6 +34,7 @@ class SessionStatusTests(unittest.TestCase):
         self.replace('browser.requests.Session')
         chrome = self.replace('browser.sb_cdp.Chrome')
         chrome.return_value.loop.run_until_complete.side_effect = lambda awaitable: awaitable.close()
+        self.replace('browser.Browser._activate_page')
         self.navigate = self.replace('browser.Browser.goto')
         self.evaluate = self.replace('browser.Browser.evaluate', return_value=response(USER))
         self.credentials = self.replace('secure.load_credentials', side_effect=AssertionError('No credential read'))
