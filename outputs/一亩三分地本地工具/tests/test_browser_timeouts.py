@@ -62,6 +62,13 @@ class LoopCase(unittest.TestCase):
 
 
 class BoundedCallTests(LoopCase):
+    def test_failed_focus_initialization_is_not_treated_as_a_successful_void_reply(self):
+        async def send(command):
+            return None  # The driver's report after swallowing a protocol failure.
+        session = self.detached(send)
+        with self.assertRaisesRegex(BrowserConnectionError, '^browser_connection_lost$'):
+            session._activate_page()
+
     def test_a_call_the_driver_never_answers_ends_within_the_bound(self):
         # Today's failure: run_until_complete waited forever on a reply that never came.
         session = self.detached(never_answers())
@@ -115,6 +122,7 @@ class EnteredCase(LoopCase):
         chrome = self.replace('browser.sb_cdp.Chrome')
         chrome.return_value.loop.run_until_complete.side_effect = lambda awaitable: awaitable.close()
         self.replace('browser.Browser.goto')
+        self.replace('browser.Browser._activate_page')  # These cases isolate deadline and shutdown behavior.
 
     def replace(self, target, *args, **kwargs):
         replacement = patch(target, *args, **kwargs)

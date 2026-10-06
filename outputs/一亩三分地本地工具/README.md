@@ -435,6 +435,8 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 每日提交按钮会检查浏览器输入事件。工具通过 CDP 发送原生鼠标事件，按按钮完整文字定位，并在点击前核对可见性、禁用状态与遮挡；不移动桌面鼠标。不要把这里改回 JavaScript `element.click()`：按钮可能直接忽略合成事件，表现为一直 `submission_unconfirmed`。该输入方式不代表保证通过站点验证；缺少回执时仍保留待确认记录，不自动清库或反复提交。
 
+专用 Chrome 的窗口隐藏或最小化时，工具会通过 CDP 保持页面处于活动状态，避免后台页面忽略输入或暂停验证回调；这不需要激活桌面窗口。浏览器集成检查使用正式启动流程和独立的合成账号、临时配置，核验页面能接收可信点击，且不改变桌面前台应用。
+
 | 现象 / 错误 | 处理 |
 |---|---|
 | `account_not_configured` / `invalid_local_account_config` | 检查 `work/local-toolkit-state/account.json`：UTF-8、`username`+`uid`（可选 `schedule_mode`、`schedule_time`、`schedule_timezone`、`checkin_mood_random`）、uid 为正整数、`checkin_mood_random` 必须是布尔值 |
