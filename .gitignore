@@ -13,6 +13,10 @@
 /.github/workflows/*
 !/.github/workflows/consistency.yml
 !/.github/workflows/publish.yml
+!/.github/scripts/
+/.github/scripts/*
+!/.github/scripts/release.py
+!/.github/scripts/test_release.py
 !/.github/actions/
 /.github/actions/*
 !/.github/actions/setup-toolkit/

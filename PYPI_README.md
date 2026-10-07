@@ -78,6 +78,17 @@ data stays in the same directory; moving from a checkout requires a separate dat
 The initial bootstrap release must be published to PyPI; subsequent compatible business changes can follow approved
 GitHub main commits directly. Registry-based installs may pin the bootstrap version in `server.json`.
 
+Version-bump commits on main now publish automatically after full CI: upload and verify the PyPI wheel/sdist,
+then create the GitHub Release for that exact commit. Ordinary commits do not publish packages, but can reach
+compatible workers through the source updater. Retries require identical existing PyPI files and tags.
+
+## Changes in 1.3.0 (since PyPI 1.1.0)
+
+- Browser input replaces synthetic submit clicks, and parked pages retain focus without activating the desktop window.
+- Sourced offline journal phrases support style selection and avoid duplicates across 365 days.
+- CLI and persistent MCP workers receive CI-approved source updates; Windows CLI streams are preserved.
+- Version bumps publish to PyPI after main CI, then create the matching GitHub Release.
+
 ## Where it keeps things
 
 An installed copy writes everything to one per-user directory: `~/Library/Application Support/1point3acres-toolkit`

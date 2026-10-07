@@ -26,7 +26,10 @@
 
 ## 最近更新
 
-- **PyPI 1.1.0 已发布。** [软件包](https://pypi.org/project/1point3acres-toolkit/1.1.0/)和 [GitHub Release](https://github.com/vivian-labs/1point3acres-toolkit/releases/tag/v1.1.0) 均已上线；`uvx …@latest` 的下载安装、MCP 连接和工具调用已验证。普通用户无需克隆仓库；1.2.0 启动器增加 CLI 和常驻 MCP 的自动更新。见 [快速开始](#快速开始)。
+- **1.3.0：发布与自动更新串联。** 版本号提升并合并到 `main` 后，通过完整 CI 才会自动上传 PyPI；核对上传文件后，才创建对应的 GitHub Release。定时任务使用 `uvx …@latest` 时，下次启动即可获取已发布新版；旧 MCP 首次升级启动器需要重连。普通代码提交不会单独发包，发布结果以 [发布工作流](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 为准。
+- **修复签到、答题按钮和后台输入。** 提交按钮改为浏览器原生输入，解决网页拒绝 JavaScript 合成点击的问题；后台窗口保持页面焦点，避免输入和验证回调暂停，同时不抢桌面焦点。这不保证自动化无法被网站识别。
+- **离线日记语料与全年去重。** 从带来源说明的离线语料中选择现代文字或诗句，避开过去 365 天重复及高度相似内容；语料耗尽时留空。可配置风格，也可关闭随机心情和公开短句。见 [语料说明](outputs/一亩三分地本地工具/README.md#journal-corpus)。
+- **CLI / MCP 业务代码自动更新。** 启动器只使用 main 上通过 CI 的提交；CLI 在业务命令前检查，常驻 MCP 在空闲时切换后台进程。包含 Windows 标准输入输出修复；离线诊断不触发更新。
 - **离线版本诊断。** 命令行 `info` 和 MCP 工具 `runtime_info` 可以核对磁盘源码、当前进程加载的版本与调度配置，发现更新后仍在运行的旧进程。见 [更新与维护](#维护)。
 - **Windows 定时任务。** 仓库版提供 `计划.ps1`，支持预览、安装、查看状态和移除，每分钟通过 `pythonw.exe` 检查一次，不弹控制台窗口。见 [每日自动运行](outputs/一亩三分地本地工具/README.md#automation)。
 - **重启后接着跑。** 每日随机时间、心情短句、签到后的答题等待截止时间和提交意图都先保存在本机；恢复时复用记录，失败后按 5、10、20、40、60 分钟逐步等待，避免反复访问网站。
@@ -351,6 +354,8 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 
 **默认自动更新。** 从 1.2.0 起，启动器检查 `vivian-labs/1point3acres-toolkit` 的 `main`，只使用同一提交已通过 CI 的版本。CLI 执行业务命令前准备新版；常驻 MCP 在业务调用前和空闲时检查，等正在执行的调用结束后替换后台进程，保持客户端原连接。需要 Git 和网络，`info`、`daily-history` 健康查询保持离线。
 
+**软件包发布也会自动同步。** 版本号提升并合并到 main 后，完整 CI 通过才上传并核验 PyPI，随后创建对应的 GitHub Release。`uvx …@latest` 下次启动获取新包；普通提交不发包，但可通过上述源码更新器更新业务代码。包版本与实际运行提交可能不同，分别用包元数据和 `runtime_info.loaded.revision` 核对。
+
 自动更新的过程：
 
 ![自动更新：准备新版后安全切换](docs/update-flow.svg)
@@ -398,7 +403,7 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 | 治理 | `architecture.json` 白名单 + `governance.py` 用 AST 扫源码 | 模块依赖、外部库归属、状态字面量、生成文件是否过期，都是机器验，不靠人记 |
 | 配图 | `docs/diagrams.py`，纯标准库生成 SVG | 一套样式画 29 张图，改一处全局生效；深色模式自动适配 |
 
-**维护者发布。** 通过 PR 将版本变更合并到 main，确认目标提交的 CI 通过，创建对应 GitHub Release，再手动触发 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml)。Trusted Publishing 授权已配置，无需保存长期 token；每次仍需触发发布，合并 main 不会自动上传。完整步骤见 [发布流程](outputs/一亩三分地本地工具/README.md#publishing)。
+**维护者发布。** 通过 PR 将版本号提升合并到 main；该提交的完整 CI 通过后，[Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 自动构建并上传 PyPI，核验文件后创建对应 GitHub Release。Trusted Publishing 无需长期 token；普通提交不发包，失败可按原提交重试。完整步骤见 [发布流程](outputs/一亩三分地本地工具/README.md#publishing)。
 
 依赖清单在 [`requirements.txt`](outputs/一亩三分地本地工具/requirements.txt)，版本全部锁死，检查命令会核对已安装版本和清单一致。
 

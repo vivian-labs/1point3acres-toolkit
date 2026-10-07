@@ -325,7 +325,9 @@
       "docs/today-tasks.svg",
       "docs/troubleshooting-map.svg",
       "docs/update-flow.svg",
-      "docs/verify-flow.svg"
+      "docs/verify-flow.svg",
+      ".github/scripts/release.py",
+      ".github/scripts/test_release.py"
     ],
     "package_files": [
       "README.md",

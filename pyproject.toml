@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "1point3acres-toolkit"
-version = "1.2.0"
+version = "1.3.0"
 description = "1point3acres forum toolkit: daily check-in and quiz with reward verification, an offline interview-experience library and forum tools, as a CLI and an MCP server driving your own Chrome"
 readme = "PYPI_README.md"
 license = "MIT"
