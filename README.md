@@ -403,7 +403,7 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 | 治理 | `architecture.json` 白名单 + `governance.py` 用 AST 扫源码 | 模块依赖、外部库归属、状态字面量、生成文件是否过期，都是机器验，不靠人记 |
 | 配图 | `docs/diagrams.py`，纯标准库生成 SVG | 一套样式画 29 张图，改一处全局生效；深色模式自动适配 |
 
-**维护者发布。** 通过 PR 将版本变更合并到 main，确认目标提交的 CI 通过，创建对应 GitHub Release，再手动触发 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml)。Trusted Publishing 授权已配置，无需保存长期 token；每次仍需触发发布，合并 main 不会自动上传。完整步骤见 [发布流程](outputs/一亩三分地本地工具/README.md#publishing)。
+**维护者发布。** 通过 PR 将版本号提升合并到 main；该提交的完整 CI 通过后，[Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 自动构建并上传 PyPI，核验文件后创建对应 GitHub Release。Trusted Publishing 无需长期 token；普通提交不发包，失败可按原提交重试。完整步骤见 [发布流程](outputs/一亩三分地本地工具/README.md#publishing)。
 
 依赖清单在 [`requirements.txt`](outputs/一亩三分地本地工具/requirements.txt)，版本全部锁死，检查命令会核对已安装版本和清单一致。
 
