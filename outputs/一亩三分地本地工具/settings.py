@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent
 WORKSPACE = ROOT.parent.parent
+RUNTIME_WORKSPACE = Path(os.environ.get('ONEPOINT3ACRES_WORKSPACE', str(WORKSPACE))).expanduser().resolve()
 WINDOWS = sys.platform == 'win32'
 MACOS = sys.platform == 'darwin'
 # Two ways to run. From a checkout, state lives beside the source under work/ and the venv's Python runs the
@@ -35,10 +36,10 @@ def default_data_home():
 
 DATA_HOME = (Path(os.environ[DATA_HOME_ENV]).expanduser() if os.environ.get(DATA_HOME_ENV)
              else default_data_home() if INSTALLED else None)
-STATE = DATA_HOME / 'state' if DATA_HOME else WORKSPACE / 'work' / 'local-toolkit-state'
+STATE = DATA_HOME / 'state' if DATA_HOME else RUNTIME_WORKSPACE / 'work' / 'local-toolkit-state'
 DATABASE_NAME = 'interviews.sqlite'
-PROFILE = DATA_HOME / 'chrome-profile' if DATA_HOME else WORKSPACE / 'work' / 'account-browser' / 'chrome-profile'
-PYTHON = WORKSPACE / 'work' / 'cf-probe-venv' / ('Scripts/python.exe' if WINDOWS else 'bin/python')
+PROFILE = DATA_HOME / 'chrome-profile' if DATA_HOME else RUNTIME_WORKSPACE / 'work' / 'account-browser' / 'chrome-profile'
+PYTHON = RUNTIME_WORKSPACE / 'work' / 'cf-probe-venv' / ('Scripts/python.exe' if WINDOWS else 'bin/python')
 CONFIG_FILE = (DATA_HOME or ROOT) / 'mcp.config.json'
 CHROME = (Path(r'C:\Program Files\Google\Chrome\Application\chrome.exe') if WINDOWS
           else Path('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'))
@@ -46,6 +47,20 @@ CHROME_BUNDLE_ID = 'com.google.Chrome'
 CREDENTIAL_SERVICE = '1point3acres-toolkit'
 ACCOUNT_FILE = STATE / 'account.json'
 LEARNED_ANSWERS_NAME = 'learned-answers.json'
+UPDATE_REPOSITORY = 'vivian-labs/1point3acres-toolkit'
+SOURCE_PACKAGE_DIRECTORY = '一亩三分地本地工具'
+UPDATE_GIT_URLS = ('ssh://git@ssh.github.com/' + UPDATE_REPOSITORY + '.git',
+                   'https://github.com/' + UPDATE_REPOSITORY + '.git')
+UPDATE_CACHE = Path(os.environ.get('ONEPOINT3ACRES_UPDATE_CACHE', str(
+    DATA_HOME / 'updates' if DATA_HOME else RUNTIME_WORKSPACE / 'work' / 'toolkit-updates'))).expanduser().resolve()
+UPDATE_FETCH_TIMEOUT = 12
+UPDATE_PREPARE_TIMEOUT = 300
+UPDATE_STARTUP_BUDGET_SECONDS = UPDATE_PREPARE_TIMEOUT + 300
+UPDATE_POLL_SECONDS = 60
+UPDATE_HANDSHAKE_TIMEOUT = 20
+UPDATE_OFFLINE_COMMANDS = ('info', 'daily-history')
+UPDATE_CONTROL_TOOLS = ('runtime_info', 'daily_history', 'task_status', 'control_task', 'list_tasks')
+MANAGED_WORKER = os.environ.get('ONEPOINT3ACRES_UPDATE_WORKER') == '1'
 SCHEDULE_KEYS = {'schedule_time', 'schedule_timezone', 'schedule_mode'}
 # Controls public check-in phrases; absent uses mood_random_enabled's default.
 MOOD_RANDOM_KEY = 'checkin_mood_random'
@@ -219,7 +234,7 @@ SUBMISSION_TIMEOUT = 45
 CDP_CALL_TIMEOUT = 150
 # Each step of closing the owned Chrome: the graceful close, then the waits after terminate and after kill.
 BROWSER_SHUTDOWN_TIMEOUT = 5
-EXPORT_DIRECTORY = DATA_HOME / 'Stripe面经资料' if DATA_HOME else ROOT.parent / 'Stripe面经资料'
+EXPORT_DIRECTORY = DATA_HOME / 'Stripe面经资料' if DATA_HOME else RUNTIME_WORKSPACE / 'outputs' / 'Stripe面经资料'
 EXPORT_FILES = {'json': '面经.json', 'csv': '面经.csv', 'markdown': '面经.md', 'reader': '打开阅读器.html'}
 # Media archived from saved threads: only the site's own hosts, bounded per file and per thread, kept under one directory.
 MEDIA_DIRECTORY = STATE / 'media'

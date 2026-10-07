@@ -1,4 +1,9 @@
 import json
+import os
+import sys
+if __name__ == '__main__' and os.environ.get('ONEPOINT3ACRES_UPDATE_WORKER') != '1' and os.environ.get('ONEPOINT3ACRES_AUTO_UPDATE') != '0':
+    from launcher import main as launch
+    raise SystemExit(launch(['mcp']))
 import inspect
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError

@@ -26,7 +26,7 @@
 
 ## 最近更新
 
-- **PyPI 1.1.0 已发布。** [软件包](https://pypi.org/project/1point3acres-toolkit/1.1.0/)和 [GitHub Release](https://github.com/vivian-labs/1point3acres-toolkit/releases/tag/v1.1.0) 均已上线；`uvx …@latest` 的下载安装、MCP 连接和工具调用已验证。普通用户无需克隆仓库，新版本发布后重启 MCP 即可检查更新。见 [快速开始](#快速开始)。
+- **PyPI 1.1.0 已发布。** [软件包](https://pypi.org/project/1point3acres-toolkit/1.1.0/)和 [GitHub Release](https://github.com/vivian-labs/1point3acres-toolkit/releases/tag/v1.1.0) 均已上线；`uvx …@latest` 的下载安装、MCP 连接和工具调用已验证。普通用户无需克隆仓库；1.2.0 启动器增加 CLI 和常驻 MCP 的自动更新。见 [快速开始](#快速开始)。
 - **离线版本诊断。** 命令行 `info` 和 MCP 工具 `runtime_info` 可以核对磁盘源码、当前进程加载的版本与调度配置，发现更新后仍在运行的旧进程。见 [更新与维护](#维护)。
 - **Windows 定时任务。** 仓库版提供 `计划.ps1`，支持预览、安装、查看状态和移除，每分钟通过 `pythonw.exe` 检查一次，不弹控制台窗口。见 [每日自动运行](outputs/一亩三分地本地工具/README.md#automation)。
 - **重启后接着跑。** 每日随机时间、心情短句、签到后的答题等待截止时间和提交意图都先保存在本机；恢复时复用记录，失败后按 5、10、20、40、60 分钟逐步等待，避免反复访问网站。
@@ -262,7 +262,7 @@ uvx 1point3acres-toolkit@latest
 
 将这一项合并到客户端已有配置，不要覆盖其他 MCP。使用 TOML 或图形设置的客户端，填入相同的启动命令、参数和环境变量即可。客户端找不到 `uvx` 时，填它的绝对路径。
 
-接入后还需[配置自己的论坛账号](outputs/一亩三分地本地工具/README.md#account)并建立登录；启动 MCP 本身不会配置账号或创建每日计划。账号、专用 Chrome 和历史保存在个人应用数据目录，可通过 `ONEPOINT3ACRES_HOME` 指定位置。`@latest` 在每次重新启动时请求最新兼容发布版本，已运行的服务需要重连，不会自动热更新。
+接入后还需[配置自己的论坛账号](outputs/一亩三分地本地工具/README.md#account)并建立登录；启动 MCP 本身不会配置账号或创建每日计划。账号、专用 Chrome 和历史保存在个人应用数据目录，可通过 `ONEPOINT3ACRES_HOME` 指定位置。`@latest` 获取最新兼容的启动器发布版；1.2.0 起，已运行的 MCP 也会准备通过 CI 的 main，并在当前调用结束后切换。需要 Git 和网络。
 
 只想先检查程序能否运行，可以执行以下命令：uvx 会检查并准备软件包，随后 `info` 只读取本机状态，不会登录或签到：
 
@@ -280,13 +280,13 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 
 **给安装助手：普通用户默认使用 `uvx …@latest`，MCP 和每日计划都要配置；不要因为拿到了仓库就默认安装源码版。** 按 [AI 安装步骤](outputs/一亩三分地本地工具/README.md#ai) 完成账号配置、首次验证与系统定时任务。只有用户明确要求开发、源码运行或固定版本时，才改用相应安装方式。你需要提供论坛用户名和 uid，并按提示在本机安全输入密码。
 
-配置后，每日计划每次启动都会检查并使用最新兼容的 PyPI 发布版本，不用用户手动升级；MCP 在下次启动或重连时更新。正在运行的服务不会中途换版本。维护者需要先把新版发布到 PyPI，单纯更新 GitHub 源码不会更新用户的软件。已有源码或 pip 安装需按 [迁移步骤](outputs/一亩三分地本地工具/README.md#pip) 更换入口并保留数据。
+配置后，CLI 启动及常驻 MCP 都会检查通过 CI 的 main。已开始的调用先完成，再切换业务进程，保留客户端连接。初次安装新启动器需要发布软件包，之后兼容的业务源码变更可直接自动更新。已有源码或 pip 安装需按 [迁移步骤](outputs/一亩三分地本地工具/README.md#pip) 更换入口并保留数据。
 
 下面的源码安装适合需要改代码的开发者，或继续使用已有仓库版的用户。
 
 ![安装七步](docs/install-flow.svg)
 
-### 开发者源码安装：七步的原理（手动更新）
+### 开发者源码安装：七步的原理
 
 前置：装好 Git、Chrome、Python 3.12。每一步的确切命令见 [使用说明 › 源码安装](outputs/一亩三分地本地工具/README.md#install)，这里只说每步在做什么、怎么算成功。
 
@@ -349,17 +349,17 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 
 ## 更新与维护
 
-**普通用户推荐 uvx 接入。** `uvx 1point3acres-toolkit@latest` 在重新启动 MCP 时请求最新兼容发布版本，无需 `git pull`；已有进程需要重连。我们必须把新版本发布到 PyPI，只更新 GitHub 不会更新软件包用户。不带 `@latest` 的 uvx 会复用缓存，详见 [uv 官方说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。已有用户需要修改客户端保存的启动配置，仓库用户另需迁移个人数据，具体见使用说明。
+**默认自动更新。** 从 1.2.0 起，启动器检查 `vivian-labs/1point3acres-toolkit` 的 `main`，只使用同一提交已通过 CI 的版本。CLI 执行业务命令前准备新版；常驻 MCP 在业务调用前和空闲时检查，等正在执行的调用结束后替换后台进程，保持客户端原连接。需要 Git 和网络，`info`、`daily-history` 健康查询保持离线。
 
-仓库版供开发者使用，更新的原理是「先停、再拉、再检查、再开」：
+自动更新的过程：
 
-![更新到新版本：五步](docs/update-flow.svg)
+![自动更新：准备新版后安全切换](docs/update-flow.svg)
 
 你电脑上的账号、密码、数据库、Chrome 设置都不受更新影响。计划时间之类的个人配置写在账号配置里，不改仓库里的代码，更新时才不会冲突。具体命令见 [使用说明 › 更新与维护](outputs/一亩三分地本地工具/README.md#maintenance)。
 
-**确认更新已生效。** 仓库版在工具目录执行 `./运行.sh info`（Windows：`运行.cmd info`）；uvx 版执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info`；pip 版执行 `1point3acres-toolkit-cli info`。它只读本机版本与有效配置，不读凭据、不开浏览器。接入 AI 助手的常驻 MCP 服务需要在更新源码或账号配置后重连，再调用 `runtime_info`，确认 `restart_required=false`，且 `loaded.fingerprint` 与 `disk.fingerprint` 一致。
+**确认更新已生效。** 仓库版执行 `运行.cmd info` / `./运行.sh info`，软件包版执行 `1point3acres-toolkit-cli info` 或对应 uvx 命令；MCP 调用 `runtime_info`。`loaded.revision` 表示实际运行的提交，`updates` 给出检查时间、最新可用提交和脱敏错误。新版在私有缓存中运行，因此根目录的 `git log` 可能仍是较旧的启动器版本。初次从 1.1.0 或更早版本迁移，需要更新入口并重启旧 MCP 一次；之后兼容的源码更新自动切换。修改账号配置仍需重连。
 
-**pip 安装版升级。** 暂停每日计划并等待当前运行结束后，在原安装环境执行 `python -m pip install --upgrade 1point3acres-toolkit`；用 `info` 核对后恢复计划，并重连使用该环境的 MCP 服务。账号和历史仍保留在个人应用数据目录中。`计划.ps1` 是仓库版入口，不随 wheel 分发。
+**初次安装与失败处理。** 软件包入口使用 `uvx @latest` 获取包含启动器的发布版；GitHub 合并本身不会把新启动器装进旧环境。启动器已安装后，它直接准备通过 CI 的源码版本，不要求每次变更都发 PyPI。下载、依赖安装或候选校验失败时继续使用已验证版本，不覆盖原代码、账号、数据库和 Chrome 会话。停用自动检查、缓存位置及开发者手动更新方式见[完整维护说明](outputs/一亩三分地本地工具/README.md#maintenance)。
 
 **几点须知：**
 
@@ -423,6 +423,8 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 | `library.py` | SQLite 资料库：每日历史、心跳、面经采集、站内搜索、导出、任务、媒体归档、OCR、学到的答案 |
 | `browser.py` | 唯一联网的模块：启动专用 Chrome、CDP 通信、登录、Cloudflare 验证、微信扫码、窗口隐藏、看门狗、读积分流水 |
 | `rules.py` | 纯规则：题库匹配、站点日、奖励核对、心情抽取、健康判定、面经大纲提取 |
+| `updates.py` | 软件更新的唯一来源、CI 准入、独立代码与依赖环境准备、原子激活 |
+| `launcher.py` / `mcp_bridge.py` | 统一启动与稳定 MCP 连接；后台调用结束后切换版本，绝不重放已发送的调用 |
 | `corpus.py` | 离线语料提取与校验、风格抽取、文字和近似句去重；不联网、不提交网站 |
 | `secure.py` | 钥匙串 / DPAPI 读写 |
 | `extract.py` | BeautifulSoup 解析论坛各种页面 |
@@ -450,4 +452,6 @@ CI 在 Ubuntu、Windows 2022、Windows 2025、macOS 15 上分阶段跑，每个�
 
 **改代码：** 改完统一跑检查命令，先不带参数做完整离线检查与回归，再带 `--sync` 重建生成文件后再检查。新增模块、新增依赖、新增 MCP 工具、新增文件，都要同步登记到 `architecture.json`，否则检查会失败，这是故意的。改了配图就重新跑一遍 `python3 docs/diagrams.py`，SVG 是生成物，不要手改。
 
-语料增加一个登记的离线模块 `corpus.py` 和两份分发数据。`journal-corpus.json` 单独获准最多 4 MB 的 UTF-8 文本，其他文件仍维持原大小限制，敏感信息扫描继续执行。语料文件参与运行版本指纹；更新后常驻 MCP 需要重连，原始下载文件和个人使用历史不进入仓库。
+语料增加一个登记的离线模块 `corpus.py` 和两份分发数据。`journal-corpus.json` 单独获准最多 4 MB 的 UTF-8 文本，其他文件仍维持原大小限制，敏感信息扫描继续执行。语料文件参与运行版本指纹；自动更新包含语料，原始下载文件和个人使用历史不进入仓库。
+
+自动更新增加独立的启动控制层。论坛访问仍归 `browser.py`，软件更新只由 `updates.py` 请求固定的 GitHub 仓库和 CI API；准备时使用隔离的数据目录。业务进程的代码工作区与可写数据工作区分开，桥接层只转发协议和管理进程，不重建业务规则。更新源码和依赖不触碰当前目录的用户修改。

@@ -78,13 +78,13 @@ class InstalledLayoutTests(unittest.TestCase):
 
     def test_entry_points_restore_the_script_layout_then_hand_over(self):
         import entry
-        with patch('mcp_server.main') as serve:
+        with patch('launcher.main', return_value=0) as serve, self.assertRaises(SystemExit):
             entry.main()
-        serve.assert_called_once_with()
+        serve.assert_called_once_with(['mcp'])
         self.assertEqual(Path(sys.path[0]).resolve(), settings.ROOT)
-        with patch('cli.run') as command:
+        with patch('launcher.main', return_value=0) as command, patch('sys.argv', ['tool', 'info']), self.assertRaises(SystemExit):
             entry.cli()
-        command.assert_called_once_with()
+        command.assert_called_once_with(['cli', 'info'])
 
 
 if __name__ == '__main__':
