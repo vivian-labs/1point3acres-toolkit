@@ -157,6 +157,22 @@ class UpdateTests(unittest.TestCase):
                 self.assertEqual(launcher.main(['cli', 'info']), 0)
                 self.assertEqual(config.read_text(), 'existing-user-config')
 
+    def test_real_cli_bootstrap_preserves_piped_input_output_and_exit_status(self):
+        from settings import ROOT
+        with tempfile.TemporaryDirectory() as directory:
+            package = Path(directory)
+            (package / 'cli.py').write_text(
+                'import sys\nprint(input())\nprint("streamed-error", file=sys.stderr)\nsys.exit(7)\n')
+            wrapper = ('import sys; from pathlib import Path; from unittest.mock import patch; '
+                       'from updates import Manager,Release; import launcher\n'
+                       'with patch.object(Manager,"resolve",return_value=Release(Path(sys.argv[1]),Path(sys.executable),None)):\n'
+                       ' raise SystemExit(launcher.main(["cli","info"]))\n')
+            result = subprocess.run([os.sys.executable, '-X', 'utf8', '-c', wrapper, str(package)],
+                cwd=ROOT, input='synthetic-input\n', capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 7)
+            self.assertEqual(result.stdout.strip(), 'synthetic-input')
+            self.assertEqual(result.stderr.strip(), 'streamed-error')
+
 
 if __name__ == '__main__':
     unittest.main()
