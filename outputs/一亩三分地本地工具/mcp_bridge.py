@@ -1,11 +1,15 @@
 """Keep the client stdio session alive while replacing idle, immutable MCP workers."""
 import asyncio
 import json
+import os
 import sys
 import threading
 from contextlib import suppress
 
 from settings import WINDOWS, UPDATE_POLL_SECONDS, UPDATE_HANDSHAKE_TIMEOUT, UPDATE_CONTROL_TOOLS
+
+META_PREFIX = 'io.modelcontextprotocol/'
+META_PROTOCOL = META_PREFIX + 'protocolVersion'
 
 
 class Bridge:
@@ -20,6 +24,10 @@ class Bridge:
         self.initialize = None
         self.protocol = None
         self.capabilities = None
+        self.discover = None
+        self.modern_protocol = None
+        self.modern_capabilities = None
+        self.catalog = set()
         self.update = None
         self.target = None
 
@@ -51,9 +59,16 @@ class Bridge:
 
     def read_client(self, loop):
         try:
-            while line := sys.stdin.buffer.readline():
-                loop.call_soon_threadsafe(self.queue.put_nowait, ('client', None, json.loads(line)))
-        except (ValueError, OSError):
+            # A blocked BufferedReader daemon can abort Python during worker-crash shutdown.
+            buffer = b''
+            while chunk := os.read(sys.stdin.fileno(), 65536):
+                lines = (buffer + chunk).split(b'\n')
+                buffer = lines.pop()
+                for line in lines:
+                    loop.call_soon_threadsafe(self.queue.put_nowait, ('client', None, json.loads(line)))
+                if len(buffer) > 32 * 1024 * 1024:
+                    raise ValueError('frame_too_large')
+        except (ValueError, OSError, RuntimeError):
             pass
         finally:
             with suppress(RuntimeError):
@@ -77,15 +92,27 @@ class Bridge:
         candidate = None
         try:
             candidate = await self.start(target)
-            initialize = {**self.initialize, 'id': '__toolkit_initialize__'}
-            await self.send(initialize, candidate)
-            line = await asyncio.wait_for(candidate.stdout.readline(), UPDATE_HANDSHAKE_TIMEOUT)
-            answer = json.loads(line)
-            result = answer.get('result', {})
-            if (answer.get('id') != initialize['id'] or result.get('protocolVersion') != self.protocol
-                    or result.get('capabilities', {}) != self.capabilities or 'error' in answer):
-                raise ValueError('worker_initialization_failed')
-            await self.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, candidate)
+            async def probe(request, identifier):
+                message = {**request, 'id': identifier}
+                await self.send(message, candidate)
+                line = await asyncio.wait_for(candidate.stdout.readline(), UPDATE_HANDSHAKE_TIMEOUT)
+                answer = json.loads(line)
+                if answer.get('id') != identifier or 'error' in answer or not isinstance(answer.get('result'), dict):
+                    raise ValueError('worker_initialization_failed')
+                return answer['result']
+            if self.initialize:
+                result = await probe(self.initialize, '__toolkit_initialize__')
+                if result.get('protocolVersion') != self.protocol or result.get('capabilities', {}) != self.capabilities:
+                    raise ValueError('worker_initialization_failed')
+                await self.send({'jsonrpc': '2.0', 'method': 'notifications/initialized'}, candidate)
+            if self.discover:
+                result = await probe(self.discover, '__toolkit_discover__')
+                capabilities = result.get('capabilities', {})
+                if (self.modern_protocol not in result.get('supportedVersions', [])
+                        or (self.modern_capabilities is not None and capabilities != self.modern_capabilities)
+                        or 'tools' not in capabilities):
+                    raise ValueError('worker_initialization_failed')
+                self.modern_capabilities = json.loads(json.dumps(capabilities))
         except (OSError, ValueError, asyncio.TimeoutError, BrokenPipeError):
             await self.close(candidate)
             with suppress(OSError):
@@ -96,7 +123,8 @@ class Bridge:
         self.reader = asyncio.create_task(self.read_worker(candidate))
         await self.close(previous)
         previous_reader.cancel()
-        await self.emit({'jsonrpc': '2.0', 'method': 'notifications/tools/list_changed'})
+        if self.initialize:
+            await self.emit({'jsonrpc': '2.0', 'method': 'notifications/tools/list_changed'})
         return True
 
     async def client(self, message):
@@ -104,6 +132,19 @@ class Bridge:
             await self.emit({'jsonrpc': '2.0', 'id': None, 'error': {'code': -32600, 'message': 'Invalid request'}})
             return
         method, identifier = message.get('method'), message.get('id')
+        params = message.get('params', {})
+        meta = params.get('_meta', {}) if isinstance(params, dict) else {}
+        modern = meta.get(META_PROTOCOL) if isinstance(meta, dict) else None
+        if isinstance(modern, str):
+            if method == 'server/discover' or self.discover is None or modern != self.modern_protocol:
+                self.discover = message if method == 'server/discover' else {
+                    'jsonrpc': '2.0', 'method': 'server/discover', 'params': {'_meta': {
+                        key: value for key, value in meta.items() if key in
+                        (META_PROTOCOL, META_PREFIX + 'clientInfo', META_PREFIX + 'clientCapabilities')}}}
+                self.modern_capabilities = None
+            self.modern_protocol = modern
+            if method == 'tools/list' and identifier is not None:
+                self.catalog.add(identifier)
         if method == 'initialize':
             self.initialize = message
         if method == 'notifications/cancelled':
@@ -139,7 +180,7 @@ class Bridge:
             self.target = self.update.result()
             self.update = None
         if self.target is not None and not self.pending and not self.server_pending:
-            if self.target != self.release and self.initialize and self.protocol:
+            if self.target != self.release and ((self.initialize and self.protocol) or (self.discover and self.modern_protocol)):
                 await self.switch(self.target)
             self.target = None
         if self.update is None and self.target is None and self.queue.empty():
@@ -184,6 +225,13 @@ class Bridge:
                         self.protocol = message['result'].get('protocolVersion')
                         self.capabilities = json.loads(json.dumps(message['result'].get('capabilities', {})))
                         message['result'].setdefault('capabilities', {}).setdefault('tools', {})['listChanged'] = True
+                    if self.discover and identifier is not None and identifier == self.discover.get('id') and 'result' in message:
+                        self.modern_capabilities = json.loads(json.dumps(message['result'].get('capabilities', {})))
+                        message['result']['ttlMs'] = 0
+                    if identifier in self.catalog:
+                        self.catalog.discard(identifier)
+                        if 'result' in message:
+                            message['result']['ttlMs'] = 0
                     if identifier in self.cancelled and 'method' not in message:
                         self.cancelled.discard(identifier)
                     else:

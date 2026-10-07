@@ -1,5 +1,6 @@
 """Exercise the real stable stdio connection with synthetic versioned workers, never the forum."""
 import json
+import asyncio
 import queue
 import subprocess
 import sys
@@ -21,6 +22,8 @@ def emit(data):
 def handle(m):
     if m.get('method') == 'initialize':
         emit({'jsonrpc':'2.0','id':m['id'],'result':{'protocolVersion':'incompatible' if version=='bad' else 'test', 'capabilities':{'tools':{}}}})
+    elif m.get('method') == 'server/discover':
+        emit({'jsonrpc':'2.0','id':m['id'],'result':{'supportedVersions':['incompatible' if version=='bad' else '2026-07-28'], 'capabilities':{'tools':{}}}})
     elif m.get('method') == 'tools/list':
         emit({'jsonrpc':'2.0','id':m['id'],'result':{'tools':[{'name':version}]}})
     elif m.get('method') == 'tools/call':
@@ -38,7 +41,7 @@ for line in sys.stdin:
     threading.Thread(target=handle,args=(json.loads(line),),daemon=True).start()
 '''
 
-HOST = '''import asyncio, json, sys
+HOST = '''import asyncio, json, sys, os
 from pathlib import Path
 from updates import Release
 from mcp_bridge import Bridge
@@ -48,9 +51,9 @@ class Manager:
     def resolve(self):
         v=self.root.joinpath('selected').read_text()
         return Release(self.root/v,Path(sys.executable),v)
-    def worker_env(self): return {'PYTHONUTF8':'1'}
+    def worker_env(self): return {**os.environ, 'PYTHONUTF8':'1'}
     def _record(self,*args): pass
-asyncio.run(Bridge(Manager()).run())
+raise SystemExit(asyncio.run(Bridge(Manager()).run()))
 '''
 
 
@@ -71,9 +74,13 @@ class BridgeIntegrationTests(unittest.TestCase):
                 self.output.put(json.loads(line))
         self.reader = threading.Thread(target=read, daemon=True)
         self.reader.start()
-        self.send(1, 'initialize', {'protocolVersion': 'test', 'capabilities': {}, 'clientInfo': {'name': 'test', 'version': '1'}})
-        self.receive(1)
-        self.send(None, 'notifications/initialized')
+        if getattr(self, 'modern', False):
+            self.send(1, 'server/discover', {'_meta': {'io.modelcontextprotocol/protocolVersion': '2026-07-28'}})
+            self.receive(1)
+        else:
+            self.send(1, 'initialize', {'protocolVersion': 'test', 'capabilities': {}, 'clientInfo': {'name': 'test', 'version': '1'}})
+            self.receive(1)
+            self.send(None, 'notifications/initialized')
         self.send(2, 'tools/call', {'name': 'runtime_info'})
         self.assertEqual(self.receive(2)['result']['version'], 'v1')
 
@@ -158,6 +165,50 @@ class BridgeIntegrationTests(unittest.TestCase):
         result = self.receive(3)
         self.assertIn('not replayed', result['error']['message'])
         self.process.wait(timeout=5)
+        self.assertEqual(self.process.returncode, 1)
+
+
+class ModernBridgeIntegrationTests(unittest.TestCase):
+    modern = True
+    setUp = BridgeIntegrationTests.setUp
+    tearDown = BridgeIntegrationTests.tearDown
+    send = BridgeIntegrationTests.send
+    receive = BridgeIntegrationTests.receive
+
+    def test_incompatible_modern_candidate_keeps_old_worker_without_replay(self):
+        (self.root / 'selected').write_text('bad')
+        self.send(3, 'tools/call', {'name': 'echo'})
+        self.assertEqual(self.receive(3)['result']['version'], 'v1')
+        self.assertEqual((self.root / 'calls').read_text().splitlines().count('3'), 1)
+
+
+class SDKBridgeIntegrationTests(unittest.TestCase):
+    def test_real_sdk_modern_legacy_and_inline_clients_upgrade_on_the_same_connection(self):
+        from mcp import Client
+        from mcp.client.stdio import StdioServerParameters
+        worker = ('from pathlib import Path\nfrom mcp.server.mcpserver import MCPServer\n'
+                  'server=MCPServer("synthetic-update")\n'
+                  '@server.tool()\ndef version()->str: return Path(__file__).parent.name\n'
+                  'server.run(transport="stdio")\n')
+        async def exercise(root, mode):
+            parameters = StdioServerParameters(command=sys.executable,
+                args=['-X', 'utf8', '-c', HOST, str(root)], cwd=str(ROOT))
+            async with Client(parameters, mode=mode) as client:
+                before = await client.call_tool('version', {})
+                self.assertFalse(before.is_error)
+                self.assertIn('v1', ''.join(item.text for item in before.content if hasattr(item, 'text')))
+                (root / 'selected').write_text('v2')
+                after = await client.call_tool('version', {})
+                self.assertFalse(after.is_error)
+                self.assertIn('v2', ''.join(item.text for item in after.content if hasattr(item, 'text')))
+        for mode in ('auto', 'legacy', '2026-07-28'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for version in ('v1', 'v2'):
+                    (root / version).mkdir()
+                    (root / version / 'mcp_server.py').write_text(worker, encoding='utf-8')
+                (root / 'selected').write_text('v1')
+                asyncio.run(asyncio.wait_for(exercise(root, mode), timeout=30))
 
 
 if __name__ == '__main__':

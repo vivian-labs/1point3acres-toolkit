@@ -34,7 +34,7 @@
 5. 按 [首次运行](#first-run) 验证登录和每日任务，再按 [每日自动运行](#automation) 创建唯一的系统每日计划，入口必须是 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume`。
 6. 读回客户端注册和系统任务，确认两处都使用 `@latest`、`uvx` 绝对路径和相同数据目录；报告安装版本、任务是否启用，以及 MCP 已连接时也会在当前调用结束后更新。不能只执行一次安装命令就宣称已经配置自动更新。
 
-默认不使用 `git clone` + 虚拟环境、单独 `pip install` 或 `uv tool install` 作为用户的自动更新方案。这些方式以及固定版本仅在用户明确选择时使用。`@latest` 获取最新兼容的软件包启动器。1.2.0 起，启动器会继续检查组织仓库 main 的最新提交，只有该提交通过完整 CI 才准备并启用。CLI 在业务命令前更新，常驻 MCP 在业务调用前及空闲时检查，等当前调用结束后切换后台进程。需要 Git 和网络；下载、依赖或校验失败时继续运行上次可用版本。
+默认不使用 `git clone` + 虚拟环境、单独 `pip install` 或 `uv tool install` 作为用户的自动更新方案。这些方式以及固定版本仅在用户明确选择时使用。`@latest` 获取最新兼容的软件包启动器。1.2.0 起，启动器会继续检查组织仓库 main 的最新提交，只有该提交通过完整 CI 才准备并启用。CLI 在业务命令前更新，常驻 MCP 在业务调用前及空闲时检查，等当前调用结束后切换后台进程。需要 Git 和网络；下载、依赖或校验失败时继续运行上次可用版本。1.3.1 同时支持旧版 `initialize`、新版 `server/discover` 和直接携带协议元数据的客户端；切换前核验候选协议，不兼容时保留原进程。
 
 你只需要参与两件事：
 
@@ -534,7 +534,7 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 将 PyPI 和 GitHub Release 串成一次发布，继续使用 Trusted Publishing，无需长期 API token。`main` 的 Project consistency 成功后自动检查该提交；只有版本号相对第一父提交提升时才发包，普通提交直接跳过。
 
-1. 同步提高根目录 `pyproject.toml`、`server.json` 顶层和 package 的版本号，在同一个 PR 更新 README，合并到 `main`。版本必须是稳定的 `major.minor.patch`；本次 `1.3.0` 包含可信浏览器点击、后台焦点修复、离线日记语料 / 365 天去重，以及 CLI / MCP 自动更新和 Windows 输入输出修复。
+1. 同步提高根目录 `pyproject.toml`、`server.json` 顶层和 package 的版本号，在同一个 PR 更新 README，合并到 `main`。版本必须是稳定的 `major.minor.patch`；本次 `1.3.1` 修复新旧 MCP 协议下的常驻进程自动切换，隔离更新命令的标准输入，并保留 `1.3.0` 已发布的浏览器、日记语料与 CLI 自动更新能力。
 2. 等待 **main 合并提交** 的完整 CI 通过。发布流程固定使用该提交 SHA，不使用之后可能变化的 main，也不接受 PR 检查代替 main 检查。
 3. 工作流构建 wheel/sdist，严格校验，通过短期 OIDC 身份上传 PyPI，再核对两份文件的 SHA-256。只有 PyPI 文件齐全且一致时，才为同一提交创建 `v版本号` 标签和正式 GitHub Release。两个站点不是原子更新；PyPI 失败不会创建 Release，GitHub 阶段失败则显示发布失败并等待恢复。
 4. `uvx …@latest` 每日计划在下一次启动检查并获取新包；旧 MCP 首次加载新启动器需要重连，此后兼容业务代码由后台更新器切换。可用 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 检查配置，用 `uvx --from 1point3acres-toolkit@latest python -c 'import importlib.metadata; print(importlib.metadata.version("1point3acres-toolkit"))'` 核对实际安装包版本。业务更新器可能运行更新的 main 提交，用 `runtime_info.loaded.revision` 核对；更新本地开发 checkout 仍用 `git pull`。

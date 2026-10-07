@@ -352,7 +352,7 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 
 ## 更新与维护
 
-**默认自动更新。** 从 1.2.0 起，启动器检查 `vivian-labs/1point3acres-toolkit` 的 `main`，只使用同一提交已通过 CI 的版本。CLI 执行业务命令前准备新版；常驻 MCP 在业务调用前和空闲时检查，等正在执行的调用结束后替换后台进程，保持客户端原连接。需要 Git 和网络，`info`、`daily-history` 健康查询保持离线。
+**默认自动更新。** 从 1.2.0 起，启动器检查 `vivian-labs/1point3acres-toolkit` 的 `main`，只使用同一提交已通过 CI 的版本。CLI 执行业务命令前准备新版；常驻 MCP 在业务调用前和空闲时检查，等正在执行的调用结束后替换后台进程，保持客户端原连接。需要 Git 和网络，`info`、`daily-history` 健康查询保持离线。1.3.1 起同时支持旧版 `initialize`、新版 `server/discover` 和请求内协议元数据；已连接的新旧客户端都能切换业务进程。
 
 **软件包发布也会自动同步。** 版本号提升并合并到 main 后，完整 CI 通过才上传并核验 PyPI，随后创建对应的 GitHub Release。`uvx …@latest` 下次启动获取新包；普通提交不发包，但可通过上述源码更新器更新业务代码。包版本与实际运行提交可能不同，分别用包元数据和 `runtime_info.loaded.revision` 核对。
 
