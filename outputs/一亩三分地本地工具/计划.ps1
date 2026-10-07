@@ -39,7 +39,7 @@ if ($Action -eq 'Install') {
     $info = $rawInfo | ConvertFrom-Json
     if (-not $info.account_configured) { throw 'Configure the local account before enabling the daily task.' }
     $interval = [TimeSpan]::FromSeconds($info.schedule.poll_seconds)
-    $limit = [TimeSpan]::FromSeconds($info.daily_run_timeout * ($info.daily_retry_limit + 1) + 120)
+    $limit = [TimeSpan]::FromSeconds($info.daily_run_timeout * ($info.daily_retry_limit + 1) + 120 + $info.update_startup_budget_seconds)
     $taskAction = New-ScheduledTaskAction -Execute $windowlessPython -Argument $taskArguments -WorkingDirectory $PSScriptRoot
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval $interval
     $taskSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew `

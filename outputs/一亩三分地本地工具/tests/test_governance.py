@@ -7,6 +7,11 @@ from unittest.mock import patch
 
 
 class GovernanceTests(unittest.TestCase):
+    def test_managed_worker_does_not_regenerate_stable_client_registration(self):
+        g = self.scanner()
+        with patch.object(g.settings, 'MANAGED_WORKER', True):
+            self.assertEqual(g.generated_files(g.settings.ROOT, {}, include_reader=False), {})
+
     def test_runtime_fingerprint_tracks_code_but_ignores_private_files(self):
         g = self.scanner()
         with tempfile.TemporaryDirectory() as directory:

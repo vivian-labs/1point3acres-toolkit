@@ -1,6 +1,10 @@
 import argparse
 import json
 import sys
+import os
+if __name__ == '__main__' and os.environ.get('ONEPOINT3ACRES_UPDATE_WORKER') != '1' and os.environ.get('ONEPOINT3ACRES_AUTO_UPDATE') != '0':
+    from launcher import main as launch
+    raise SystemExit(launch(['cli', *sys.argv[1:]]))
 from pathlib import Path
 from daily import run_daily, resume_daily
 from browser import session_status, session_login, session_logout, get_unread_counts

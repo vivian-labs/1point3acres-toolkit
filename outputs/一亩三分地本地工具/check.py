@@ -44,6 +44,8 @@ def dependency_errors(policy):
 
 
 def run_tests(paths):
+    # Fixtures invoke worker scripts directly. Automated checks must never fetch production updates.
+    os.environ['ONEPOINT3ACRES_AUTO_UPDATE'] = '0'
     suite = unittest.TestSuite()
     for path in paths:
         loader = unittest.TestLoader()

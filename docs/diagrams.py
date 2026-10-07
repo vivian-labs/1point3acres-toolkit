@@ -966,15 +966,15 @@ def troubleshooting_map(c: Canvas):
     c.note(24, 396, 912, '提问题时给出系统、Python、Chrome 版本和用到的命令；不要贴账号配置或完整的结果文件。', 'gray', 'help')
 
 
-@diagram('update-flow', 960, 250, '更新到新版本：五步')
+@diagram('update-flow', 960, 250, '自动更新：准备新版后安全切换')
 def update_flow(c: Canvas):
-    steps = [{'title': '暂停每日计划', 'icon': 'pause', 'body': ['别让它在更新到一半时跑起来']},
-             {'title': '确认没有本地改动', 'icon': 'git', 'body': ['有自己的改动先处理掉']},
-             {'title': '拉取新代码', 'icon': 'download', 'body': ['只接受顺利合并，有冲突就停下来看']},
-             {'title': '重装依赖、跑检查', 'icon': 'list-check', 'body': ['依赖版本可能变了，检查通过才继续']},
-             {'title': '恢复计划', 'icon': 'play', 'body': ['之后第一次触发照常判断该不该跑']}]
+    steps = [{'title': '启动或空闲检查', 'icon': 'git', 'body': ['跟踪 org 的 main；健康查询保持离线']},
+             {'title': '核对 CI', 'icon': 'list-check', 'body': ['同一提交的 main 检查必须成功']},
+             {'title': '隔离准备新版', 'icon': 'download', 'body': ['源码和依赖在独立目录中校验']},
+             {'title': '等待调用结束', 'icon': 'pause', 'body': ['不强杀业务调用，不重放提交']},
+             {'title': '自动切换执行', 'icon': 'play', 'body': ['CLI 使用新版；MCP 保持原连接']}]
     step_row(c, 24, steps, h=140)
-    c.note(24, 186, 912, 'work 文件夹里的账号、密码、数据库、Chrome 配置都不受更新影响。', 'gray', 'shield-check')
+    c.note(24, 186, 912, '更新失败继续使用已验证版本；账号、凭据、数据库、Chrome 会话留在原目录。', 'gray', 'shield-check')
 
 
 # ================================================================ 主程序

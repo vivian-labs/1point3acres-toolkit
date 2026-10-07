@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="250" viewBox="0 0 960 250" role="img" aria-label="更新到新版本：五步">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="250" viewBox="0 0 960 250" role="img" aria-label="自动更新：准备新版后安全切换">
 <style>
 text{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans CJK SC',Helvetica,Arial,sans-serif;fill:#1f2328;font-size:13px}
 .h{font-size:15px;font-weight:600}.hb{font-size:17px;font-weight:700}
@@ -38,42 +38,43 @@ text{fill:#e6edf3}.s{fill:#a3adb8}.xs{fill:#8b949e}.mono{fill:#a3adb8}.w{fill:#f
 <rect x="24.0" y="24.0" width="168.0" height="140.0" rx="12" class="c-gray"/>
 <circle cx="53.0" cy="53.0" r="13" class="f-blue"/>
 <text x="53" y="58" class="w" text-anchor="middle" style="font-size:13px">1</text>
-<g transform="translate(150.0,42.0) scale(1.000)" class="ic ic-blue"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></g>
-<text x="40" y="94" class="h">暂停每日计划</text>
-<text x="40" y="118" class="s">别让它在更新到一半时</text>
-<text x="40" y="137" class="s">跑起来</text>
+<g transform="translate(150.0,42.0) scale(1.000)" class="ic ic-blue"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 15V6a3 3 0 0 1 3-3"/><path d="M18 9a9 9 0 0 1-9 9"/></g>
+<text x="40" y="94" class="h">启动或空闲检查</text>
+<text x="40" y="118" class="s">跟踪 org 的 main；健</text>
+<text x="40" y="137" class="s">康查询保持离线</text>
 <path d="M194.0,94.0 L208.0,94.0" class="ar"/>
 <rect x="210.0" y="24.0" width="168.0" height="140.0" rx="12" class="c-gray"/>
 <circle cx="239.0" cy="53.0" r="13" class="f-blue"/>
 <text x="239" y="58" class="w" text-anchor="middle" style="font-size:13px">2</text>
-<g transform="translate(336.0,42.0) scale(1.000)" class="ic ic-blue"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M6 15V6a3 3 0 0 1 3-3"/><path d="M18 9a9 9 0 0 1-9 9"/></g>
-<text x="226" y="94" class="h">确认没有本地改动</text>
-<text x="226" y="118" class="s">有自己的改动先处理掉</text>
+<g transform="translate(336.0,42.0) scale(1.000)" class="ic ic-blue"><path d="M11 6h10"/><path d="M11 12h10"/><path d="M11 18h10"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></g>
+<text x="226" y="94" class="h">核对 CI</text>
+<text x="226" y="118" class="s">同一提交的 main 检查</text>
+<text x="226" y="137" class="s">必须成功</text>
 <path d="M380.0,94.0 L394.0,94.0" class="ar"/>
 <rect x="396.0" y="24.0" width="168.0" height="140.0" rx="12" class="c-gray"/>
 <circle cx="425.0" cy="53.0" r="13" class="f-blue"/>
 <text x="425" y="58" class="w" text-anchor="middle" style="font-size:13px">3</text>
 <g transform="translate(522.0,42.0) scale(1.000)" class="ic ic-blue"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></g>
-<text x="412" y="94" class="h">拉取新代码</text>
-<text x="412" y="118" class="s">只接受顺利合并，有冲</text>
-<text x="412" y="137" class="s">突就停下来看</text>
+<text x="412" y="94" class="h">隔离准备新版</text>
+<text x="412" y="118" class="s">源码和依赖在独立目录</text>
+<text x="412" y="137" class="s">中校验</text>
 <path d="M566.0,94.0 L580.0,94.0" class="ar"/>
 <rect x="582.0" y="24.0" width="168.0" height="140.0" rx="12" class="c-gray"/>
 <circle cx="611.0" cy="53.0" r="13" class="f-blue"/>
 <text x="611" y="58" class="w" text-anchor="middle" style="font-size:13px">4</text>
-<g transform="translate(708.0,42.0) scale(1.000)" class="ic ic-blue"><path d="M11 6h10"/><path d="M11 12h10"/><path d="M11 18h10"/><path d="m3 6 1.5 1.5L7 5"/><path d="m3 12 1.5 1.5L7 11"/><path d="m3 18 1.5 1.5L7 17"/></g>
-<text x="598" y="94" class="h">重装依赖、跑检查</text>
-<text x="598" y="118" class="s">依赖版本可能变了，检</text>
-<text x="598" y="137" class="s">查通过才继续</text>
+<g transform="translate(708.0,42.0) scale(1.000)" class="ic ic-blue"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></g>
+<text x="598" y="94" class="h">等待调用结束</text>
+<text x="598" y="118" class="s">不强杀业务调用，不重</text>
+<text x="598" y="137" class="s">放提交</text>
 <path d="M752.0,94.0 L766.0,94.0" class="ar"/>
 <rect x="768.0" y="24.0" width="168.0" height="140.0" rx="12" class="c-gray"/>
 <circle cx="797.0" cy="53.0" r="13" class="f-blue"/>
 <text x="797" y="58" class="w" text-anchor="middle" style="font-size:13px">5</text>
 <g transform="translate(894.0,42.0) scale(1.000)" class="ic ic-blue"><path d="M6 4v16l14-8Z"/></g>
-<text x="784" y="94" class="h">恢复计划</text>
-<text x="784" y="118" class="s">之后第一次触发照常判</text>
-<text x="784" y="137" class="s">断该不该跑</text>
+<text x="784" y="94" class="h">自动切换执行</text>
+<text x="784" y="118" class="s">CLI 使用新版；MCP</text>
+<text x="784" y="137" class="s">保持原连接</text>
 <rect x="24.0" y="186.0" width="912.0" height="43.0" rx="10" class="c-gray"/>
 <g transform="translate(38.0,194.5) scale(0.833)" class="ic ic-blue"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></g>
-<text x="68" y="210" class="s">work 文件夹里的账号、密码、数据库、Chrome 配置都不受更新影响。</text>
+<text x="68" y="210" class="s">更新失败继续使用已验证版本；账号、凭据、数据库、Chrome 会话留在原目录。</text>
 </svg>
