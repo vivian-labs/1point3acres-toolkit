@@ -25,6 +25,12 @@ class Release:
 
 
 def command(argv, capture=True, **kwargs):
+    if not capture:
+        # Explicit handles preserve Windows pipelines with CREATE_NO_WINDOW, including stdin for credentials.
+        # pythonw has no console streams, so its scheduled child uses null handles instead of opening a window.
+        for name in ('stdin', 'stdout', 'stderr'):
+            stream = getattr(sys, name)
+            kwargs.setdefault(name, stream if stream is not None else subprocess.DEVNULL)
     return subprocess.run([str(a) for a in argv], capture_output=capture, text=True, encoding='utf-8',
                           errors='replace', creationflags=subprocess.CREATE_NO_WINDOW if WINDOWS else 0,
                           **kwargs)
