@@ -26,7 +26,9 @@
 
 ## 最近更新
 
-- **PyPI 1.1.0 已发布。** [软件包](https://pypi.org/project/1point3acres-toolkit/1.1.0/)和 [GitHub Release](https://github.com/vivian-labs/1point3acres-toolkit/releases/tag/v1.1.0) 均已上线；`uvx …@latest` 的下载安装、MCP 连接和工具调用已验证。普通用户无需克隆仓库，新版本发布后重启 MCP 即可检查更新。见 [快速开始](#快速开始)。
+- **1.2.0：发布与自动更新串联。** 版本号提升并合并到 `main` 后，通过完整 CI 才会自动上传 PyPI；核对上传文件后，才创建对应的 GitHub Release。定时任务使用 `uvx …@latest` 时，下次启动即可获取已发布新版；常驻 MCP 需要重连。普通代码提交不会单独发包，发布结果以 [发布工作流](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 为准。
+- **修复签到、答题按钮和后台输入。** 提交按钮改为浏览器原生输入，解决网页拒绝 JavaScript 合成点击的问题；后台窗口保持页面焦点，避免输入和验证回调暂停，同时不抢桌面焦点。这不保证自动化无法被网站识别。
+- **离线日记语料与全年去重。** 从带来源说明的离线语料中选择现代文字或诗句，避开过去 365 天重复及高度相似内容；语料耗尽时留空。可配置风格，也可关闭随机心情和公开短句。见 [语料说明](outputs/一亩三分地本地工具/README.md#journal-corpus)。
 - **离线版本诊断。** 命令行 `info` 和 MCP 工具 `runtime_info` 可以核对磁盘源码、当前进程加载的版本与调度配置，发现更新后仍在运行的旧进程。见 [更新与维护](#维护)。
 - **Windows 定时任务。** 仓库版提供 `计划.ps1`，支持预览、安装、查看状态和移除，每分钟通过 `pythonw.exe` 检查一次，不弹控制台窗口。见 [每日自动运行](outputs/一亩三分地本地工具/README.md#automation)。
 - **重启后接着跑。** 每日随机时间、心情短句、签到后的答题等待截止时间和提交意图都先保存在本机；恢复时复用记录，失败后按 5、10、20、40、60 分钟逐步等待，避免反复访问网站。
@@ -349,7 +351,7 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info
 
 ## 更新与维护
 
-**普通用户推荐 uvx 接入。** `uvx 1point3acres-toolkit@latest` 在重新启动 MCP 时请求最新兼容发布版本，无需 `git pull`；已有进程需要重连。我们必须把新版本发布到 PyPI，只更新 GitHub 不会更新软件包用户。不带 `@latest` 的 uvx 会复用缓存，详见 [uv 官方说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。已有用户需要修改客户端保存的启动配置，仓库用户另需迁移个人数据，具体见使用说明。
+**普通用户推荐 uvx 接入。** `uvx 1point3acres-toolkit@latest` 在重新启动 MCP 时请求最新兼容发布版本，无需 `git pull`；已有进程需要重连。版本号提升后，main 的完整 CI 会触发自动发布：先上传并核验 PyPI，再创建 GitHub Release；PyPI 上传成功后，软件包用户才能获得对应更新。普通提交不自动发包。不带 `@latest` 的 uvx 会复用缓存，详见 [uv 官方说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。已有用户需要修改客户端保存的启动配置，仓库用户另需迁移个人数据，具体见使用说明。
 
 仓库版供开发者使用，更新的原理是「先停、再拉、再检查、再开」：
 

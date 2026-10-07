@@ -529,13 +529,14 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 ### 发布新版本（维护者）
 
-[PyPI 1.1.0](https://pypi.org/project/1point3acres-toolkit/1.1.0/) 已发布，GitHub Trusted Publishing 授权已配置。后续使用 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 工作流，无需长期 API token。合并 main 或创建 GitHub Release 都不会自动上传到 PyPI，仍需手动触发工作流。
+[Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 将 PyPI 和 GitHub Release 串成一次发布，继续使用 Trusted Publishing，无需长期 API token。`main` 的 Project consistency 成功后自动检查该提交；只有版本号相对第一父提交提升时才发包，普通提交直接跳过。
 
-1. 同步修改根目录 `pyproject.toml` 和 `server.json` 中的版本号，通过 PR 合并到 main。版本必须是尚未在 PyPI 发布的新版本；检查命令会核对版本、依赖和入口配置。
-2. 等待该提交的 Project consistency 检查全部通过，在该提交上创建对应 `v版本号` 标签及正式 GitHub Release。
-3. 在 Actions 中选择 Publish to PyPI，从 `main` 运行，`tag` 填上一步的标签。命令行等价命令为 `gh workflow run publish.yml --ref main -f tag=v版本号`（把 `v版本号` 替换为实际标签；`v1.1.0` 已发布，不要再次上传）。
-4. 工作流核对标签、软件包版本、正式 Release 和该提交的 CI，构建 wheel/sdist 并做严格检查，再由独立发布任务使用短期 OIDC 身份上传。
-5. 确认工作流成功、PyPI 页面出现新版本，再实测 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 和 MCP 的 `runtime_info`，更新 Release 说明。
+1. 同步提高根目录 `pyproject.toml`、`server.json` 顶层和 package 的版本号，在同一个 PR 更新 README，合并到 `main`。版本必须是稳定的 `major.minor.patch`；本次 `1.2.0` 包含可信浏览器点击、后台焦点修复和离线日记语料 / 365 天去重。
+2. 等待 **main 合并提交** 的完整 CI 通过。发布流程固定使用该提交 SHA，不使用之后可能变化的 main，也不接受 PR 检查代替 main 检查。
+3. 工作流构建 wheel/sdist，严格校验，通过短期 OIDC 身份上传 PyPI，再核对两份文件的 SHA-256。只有 PyPI 文件齐全且一致时，才为同一提交创建 `v版本号` 标签和正式 GitHub Release。两个站点不是原子更新；PyPI 失败不会创建 Release，GitHub 阶段失败则显示发布失败并等待恢复。
+4. `uvx …@latest` 每日计划在下一次启动检查并获取新版；常驻 MCP 需要重连。可用 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 检查配置，用 `uvx --from 1point3acres-toolkit@latest python -c 'import importlib.metadata; print(importlib.metadata.version("1point3acres-toolkit"))'` 核对实际安装版本。源码版仍需 `git pull`。
+
+**失败恢复：** 优先重跑失败的发布任务。也可从 `main` 手动触发 `gh workflow run publish.yml --ref main -f commit=完整版本提交SHA`（省略 `commit` 时检查当前 main）。仍要求版本提升和该提交的成功 CI。构建使用提交时间固定 `SOURCE_DATE_EPOCH`；已有 PyPI 文件必须与本次构建哈希一致，才允许跳过并补齐缺失文件，已有标签也必须指向同一提交。不同内容、撤回的版本或标签冲突会失败，不覆盖已发布文件；应排查后发布新版本。不要提前手工创建正式 Release。
 
 当前授权绑定 GitHub owner `vivian-labs`、仓库 `1point3acres-toolkit`、工作流 `publish.yml`、环境 `pypi`；GitHub 的 `pypi` 环境仅允许 `main` 分支部署。迁移仓库或工作流时同步修改 PyPI 项目的 Publishing 配置。首次建立新项目的方式见 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)。失败时查看 Actions 日志，确认已有文件是否上传成功后再处理；不要覆盖或重复上传已发布版本。
 

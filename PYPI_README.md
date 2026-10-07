@@ -70,8 +70,17 @@ without uv. A checkout remains available for developers and requires Git updates
 Check `runtime_info` after reconnecting: verify the expected release and `restart_required=false`.
 A clean fingerprint alone does not prove you have the newest published release. Personal data stays in the data
 directory across package updates. Moving from a checkout requires a separate data migration; see the Chinese manual.
-Maintainers must test and publish a new package to PyPI: pushing code to GitHub alone does not update package users.
+A version-bump commit on main is published automatically after its full CI succeeds. The workflow uploads and
+verifies the PyPI wheel and sdist before creating the GitHub Release at that exact commit. Ordinary commits do not
+publish packages. Scheduled `uvx …@latest` runs pick up the release on their next launch; reconnect persistent MCP
+servers. Failed releases can be retried, but existing PyPI files must match before they are reused.
 Registry-based installs may pin the version in `server.json`; they do not necessarily use `@latest`.
+
+## Changes in 1.2.0
+
+- Browser input replaces synthetic submit clicks, and parked pages retain focus without activating the desktop window.
+- Sourced offline journal phrases support style selection and avoid duplicates across 365 days.
+- Version bumps publish to PyPI after main CI, then create the matching GitHub Release.
 
 ## Where it keeps things
 

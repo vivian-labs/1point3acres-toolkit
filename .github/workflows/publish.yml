@@ -1,12 +1,15 @@
 name: Publish to PyPI
 
 on:
+  workflow_run:
+    workflows: [Project consistency]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing release tag whose commit passed Project consistency
-        required: true
-        default: v1.1.0
+      commit:
+        description: Full SHA of the version-bump commit on main (empty uses current main)
+        required: false
         type: string
 
 permissions:
@@ -19,46 +22,53 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    outputs:
+      publish: ${{ steps.gate.outputs.publish }}
+      version: ${{ steps.gate.outputs.version }}
+      sha: ${{ steps.gate.outputs.sha }}
+      tag: ${{ steps.gate.outputs.tag }}
     steps:
+      - name: Select the tested commit
+        id: source
+        env:
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha || inputs.commit || github.sha }}
+        run: |
+          [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          echo "sha=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ steps.source.outputs.sha }}
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
-      - name: Require matching release version and successful CI for this commit
+      - name: Require a version bump on main and successful CI for this exact commit
+        id: gate
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ github.token }}
-        run: |
-          python - <<'PY'
-          import json, os, re, subprocess, tomllib
-          from pathlib import Path
-          tag = os.environ['RELEASE_TAG']
-          assert re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag), 'Use a stable release tag'
-          sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
-          tagged = subprocess.check_output(['git', 'rev-parse', 'refs/tags/' + tag + '^{commit}'], text=True).strip()
-          assert sha == tagged, 'Checkout does not match tag'
-          metadata = tomllib.loads(Path('pyproject.toml').read_text())
-          assert tag == 'v' + metadata['project']['version'], 'Tag/version mismatch'
-          registry = json.loads(Path('server.json').read_text())
-          assert registry['version'] == metadata['project']['version']
-          release = json.loads(subprocess.check_output(['gh', 'release', 'view', tag, '--json', 'isDraft,isPrerelease']))
-          assert not release['isDraft'] and not release['isPrerelease'], 'Publish a stable GitHub Release first'
-          runs = json.loads(subprocess.check_output(['gh', 'run', 'list', '--commit', sha, '--workflow', 'consistency.yml', '--limit', '100', '--json', 'status,conclusion,headSha']))
-          assert any(r['headSha'] == sha and r['status'] == 'completed' and r['conclusion'] == 'success' for r in runs), 'No successful CI for release commit'
-          PY
+        run: python .github/scripts/release.py prepare
       - name: Build and validate distributions
+        if: steps.gate.outputs.publish == 'true'
         run: |
           python -m pip install build==1.6.1 twine==7.0.0
           python -m build --outdir dist
           python -m twine check --strict dist/*
+      - name: Refuse conflicting files already on PyPI
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.gate.outputs.version }}
+        run: python .github/scripts/release.py verify --version "$RELEASE_VERSION"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: steps.gate.outputs.publish == 'true'
         with:
           name: pypi-distributions
           path: dist/*
@@ -67,6 +77,7 @@ jobs:
 
   publish:
     needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
@@ -82,3 +93,31 @@ jobs:
           path: dist
       - name: Publish through PyPI Trusted Publishing
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          # Existing files were hash-checked above; allow a partial upload to resume.
+          skip-existing: true
+
+  release:
+    needs: [build, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@484a0b528fb4d7bd804637ccb632e47a0e638317
+        with:
+          name: pypi-distributions
+          path: dist
+      - name: Verify PyPI files before creating the matching GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          RELEASE_SHA: ${{ needs.build.outputs.sha }}
+        run: python .github/scripts/release.py release --version "$RELEASE_VERSION" --sha "$RELEASE_SHA"
