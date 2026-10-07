@@ -25,6 +25,9 @@ class Release:
 
 
 def command(argv, capture=True, **kwargs):
+    if capture:
+        # Update commands never need input and must not consume the client's MCP stream.
+        kwargs.setdefault('stdin', subprocess.DEVNULL)
     if not capture:
         # Explicit handles preserve Windows pipelines with CREATE_NO_WINDOW, including stdin for credentials.
         # pythonw has no console streams, so its scheduled child uses null handles instead of opening a window.
