@@ -22,6 +22,8 @@ def source_fingerprint(root=None):
     try:
         policy = json.loads((root / 'architecture.json').read_text(encoding='utf-8'))
         names = [name + '.py' for name in policy['modules']] + ['architecture.json', 'answers.json', 'mood-phrases.json']
+        if 'journal-corpus.json' in policy.get('publication', {}).get('package_files', []):
+            names.append('journal-corpus.json')
         digest = hashlib.sha256()
         for name in sorted(names):
             digest.update(name.encode('utf-8') + b'\0' + (root / name).read_bytes())

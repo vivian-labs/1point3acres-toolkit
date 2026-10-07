@@ -172,6 +172,7 @@ class CheckInMoodTests(unittest.TestCase):
         db.close()
         with patch('daily.STATE', root), patch('daily.ACCOUNT_UID', 123456), patch('daily.Browser', return_value=session), \
                 patch('daily.CHECKIN_MOOD_RANDOM', random_mood), \
+                patch('daily.load_corpus', return_value=[]), \
                 patch('daily.time.monotonic', side_effect=[0, 100, 200, 300]), patch('daily.site_day', return_value=TODAY):
             return daily.run_daily()
 
@@ -260,5 +261,12 @@ class ConfigTests(unittest.TestCase):
             self.assertTrue(settings.mood_random_enabled(settings.load_identity(path)[2]))
             for bad in ['true', 1, None]:
                 path.write_text(json.dumps({'username': 'm', 'uid': 1, 'checkin_mood_random': bad}), encoding='utf-8')
+                with self.assertRaises(RuntimeError):
+                    settings.load_identity(path)
+            for style in ('mixed', 'modern', 'poetry'):
+                path.write_text(json.dumps({'username': 'm', 'uid': 1, 'journal_style': style}), encoding='utf-8')
+                self.assertEqual(settings.load_identity(path)[2], {'journal_style': style})
+            for bad in ('unknown', True, [], None):
+                path.write_text(json.dumps({'username': 'm', 'uid': 1, 'journal_style': bad}), encoding='utf-8')
                 with self.assertRaises(RuntimeError):
                     settings.load_identity(path)

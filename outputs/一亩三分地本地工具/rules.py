@@ -11,6 +11,7 @@ from settings import (SITE_TIMEZONE, SCHEDULE_TIMEZONE, SCHEDULE_TIME, SCHEDULE_
                       HEALTH_ALERT_DAYS, HEALTH_STALE_RUNS, QUIZ_GAP_SECONDS, DAILY_RECOVERY_MINUTES)
 from contracts import (ACTIONS, HealthVerdict, HealthReason, day_complete, Attribution, Certainty, ContentStatus, RunStatus,
                        ROUND_PATTERNS, QUESTION_CUES, SPECULATION_CUES, NOISE_CUES, RESTRICTED_MARKER)
+from corpus import choose_corpus_phrase, phrase_key, overlaps, shingles
 
 LA = ZoneInfo(SITE_TIMEZONE)
 
@@ -173,13 +174,19 @@ def load_mood_phrases(path):
     return pool
 
 
-def choose_phrase(mood, pool, recent=(), rng=None):
+def choose_phrase(mood, pool, recent=(), rng=None, corpus=()):
     """Avoid recent phrases; the default mood and an exhausted group stay silent."""
     if mood == CHECKIN_MOOD_DEFAULT:
         return None
     rng = rng or SystemRandom()
+    if corpus:
+        selected = choose_corpus_phrase(mood, corpus, recent, rng)
+        if selected is not None:
+            return selected
     group = pool[mood]
-    fresh = [phrase for phrase in group if phrase not in set(recent)]
+    used = {phrase_key(text) for text in recent if text}
+    prior = [shingles(text) for text in recent if text]
+    fresh = [phrase for phrase in group if phrase_key(phrase) not in used and not overlaps(phrase, prior)]
     return rng.choice(fresh) if fresh else None
 
 

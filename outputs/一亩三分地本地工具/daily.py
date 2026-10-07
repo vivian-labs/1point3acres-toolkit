@@ -5,10 +5,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from browser import Browser
+from corpus import load_corpus
 from library import Library, load_learned_answers, record_answer_outcome
 from settings import (ROOT, SITE, STATE, SUBMISSION_TIMEOUT, ACCOUNT_UID,
                       DATABASE_NAME, DAILY_RETRY_LIMIT, DAILY_RUN_TIMEOUT, LEARNED_ANSWERS_NAME, CHECKIN_MOOD_RANDOM,
-                      CHECKIN_MOOD_DEFAULT, MOOD_PHRASES_FILE, MOOD_PHRASE_RECENT_DAYS, QUIZ_GAP_SECONDS)
+                      CHECKIN_MOOD_DEFAULT, MOOD_PHRASES_FILE, MOOD_PHRASE_RECENT_DAYS, QUIZ_GAP_SECONDS,
+                      JOURNAL_CORPUS_FILE)
 from contracts import (ACTIONS, REWARD_TITLES, ActionStatus, RunStatus, format_error, recovery_summary,
                        ResumeDecision, DAILY_RETRY_ERRORS, day_complete)
 from rules import (choose_answer, choose_mood, choose_phrase, load_mood_phrases, site_day, verify_reward,
@@ -51,7 +53,8 @@ def _checkin_plan(day):
             previous = next((row['mood'] for row in recent if row['site_day'] == yesterday), None)
             mood = choose_mood(previous)
             phrase = choose_phrase(mood, load_mood_phrases(MOOD_PHRASES_FILE),
-                                   [row['phrase'] for row in recent if row.get('phrase')])
+                                   [row['phrase'] for row in recent if row.get('phrase')],
+                                   corpus=load_corpus(JOURNAL_CORPUS_FILE) if mood != CHECKIN_MOOD_DEFAULT else ())
             # The site's explicit no-diary mood supports an empty check-in without a textarea.
             return {'mood': mood if phrase is not None else CHECKIN_MOOD_DEFAULT, 'phrase': phrase}
         return db.daily_plan(ACCOUNT_UID, day, 'checkin', create)

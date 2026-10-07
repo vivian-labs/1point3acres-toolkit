@@ -49,7 +49,7 @@ LEARNED_ANSWERS_NAME = 'learned-answers.json'
 SCHEDULE_KEYS = {'schedule_time', 'schedule_timezone', 'schedule_mode'}
 # Controls public check-in phrases; absent uses mood_random_enabled's default.
 MOOD_RANDOM_KEY = 'checkin_mood_random'
-OPTIONAL_KEYS = SCHEDULE_KEYS | {MOOD_RANDOM_KEY}
+OPTIONAL_KEYS = SCHEDULE_KEYS | {MOOD_RANDOM_KEY, 'journal_style'}
 
 
 def load_identity(path):
@@ -64,7 +64,8 @@ def load_identity(path):
             or not isinstance(value['username'], str) or not value['username'].strip()
             or value['username'] != value['username'].strip()
             or type(value['uid']) is not int or value['uid'] <= 0
-            or (MOOD_RANDOM_KEY in value and type(value[MOOD_RANDOM_KEY]) is not bool)):
+            or (MOOD_RANDOM_KEY in value and type(value[MOOD_RANDOM_KEY]) is not bool)
+            or value.get('journal_style', 'mixed') not in ('mixed', 'modern', 'poetry')):
         raise RuntimeError('invalid_local_account_config')
     return value['username'], value['uid'], {key: value[key] for key in OPTIONAL_KEYS if key in value}
 
@@ -176,7 +177,10 @@ def mood_random_enabled(overrides):
 CHECKIN_MOOD_RANDOM = mood_random_enabled(_SCHEDULE)
 MOOD_PHRASES_FILE = ROOT / 'mood-phrases.json'
 MOOD_PHRASE_MAX_LENGTH = 60
-MOOD_PHRASE_RECENT_DAYS = 30
+MOOD_PHRASE_RECENT_DAYS = 365
+JOURNAL_CORPUS_FILE = ROOT / 'journal-corpus.json'
+CORPUS_POETRY_SHARE = 0.2
+JOURNAL_STYLE = _SCHEDULE.get('journal_style', 'mixed')
 DAILY_RETRY_LIMIT = 1
 DAILY_RECOVERY_MINUTES = (5, 60)
 QUIZ_GAP_SECONDS = (30, 70)
