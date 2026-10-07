@@ -80,7 +80,7 @@ class UpdateTests(unittest.TestCase):
     def test_new_code_workspace_preserves_existing_state_profile_and_exports(self):
         import settings
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             code = root / 'versions' / 'v2' / 'outputs' / 'tool'
             code.mkdir(parents=True)
             (code / 'settings.py').write_text((settings.ROOT / 'settings.py').read_text(encoding='utf-8'), encoding='utf-8')
