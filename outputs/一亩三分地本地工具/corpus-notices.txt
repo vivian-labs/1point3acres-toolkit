@@ -1,0 +1,35 @@
+Journal corpus sources
+
+Common Voice sentence text: CC0-1.0 (repository README: Licensing and content source).
+https://github.com/common-voice/common-voice
+
+moztw/cc0-sentences: CC0-1.0.
+https://github.com/moztw/cc0-sentences
+
+Ancient Tang poetry excerpts, with author attribution: source database MIT.
+https://github.com/chinese-poetry/chinese-poetry
+
+The MIT License (MIT)
+
+Copyright (c) 2016 JackeyGao
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+Pinned commits, source-file checksums and excerpt positions are recorded in journal-corpus.json.
+Code in this toolkit remains governed by the repository LICENSE.

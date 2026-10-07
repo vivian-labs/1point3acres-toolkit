@@ -76,7 +76,9 @@ def check_repository(workspace, package_root, policy):
             errors.append(f'invalid_tracked_file: {name}')
             continue
         raw = path.read_bytes()
-        if len(raw) > 300000 or b'\0' in raw:
+        data_limit = policy['publication'].get('data_limits', {}).get(
+            name.removeprefix(package + '/'), 300000) if name.startswith(package + '/') else 300000
+        if len(raw) > data_limit or b'\0' in raw:
             errors.append(f'binary_or_oversized_file: {name}')
             continue
         try:

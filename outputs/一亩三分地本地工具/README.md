@@ -16,7 +16,7 @@
 
 - **签到**：打开签到页 → 选一个心情（默认随机，见下条）→ 提交签到。提交后读取积分流水，确认当天「签到奖励」大米到账才算成功。
 - **答题**：从站点接口 `dailyQuestion.get` 读出题目和选项，和内置题库 [`answers.json`](./answers.json)（194 道纯文本问答对）逐字比对（做 NFKC 归一化，按选项文字匹配、不按位置）。命中就点选项、提交答案，再确认「每日答题」奖励到账。题库没有的题标记 `answer_needed` 停下，不瞎猜。补答一次并**确认奖励到账**后写进本机题库 `work/local-toolkit-state/learned-answers.json`，下次同题直接命中；本机实测过的答案优先于仓库自带的快照。答过但没到账的选项记为已知错误，下次即使被当作答案传进来也拒绝提交，不重复扣米。没等到站点响应时什么都不学。
-- **心情 / 日记**：默认开启随机心情。系统随机源按配置权重抽取，只有昨天的记录参与延续；同账号同站点日的心情和短句在操作页面前保存，重试不重抽。`mood-phrases.json` 是中性表达模板，不描述具体个人经历。短句避开之前 30 个日历日用过的内容；候选用尽时改选「没心情」并留空，使用站点已有的无说说流程。短句可能成为主页公开记录；设置 `"checkin_mood_random": false` 立即停止发布，优先于已存随机计划。
+- **心情 / 日记**：默认开启随机心情。系统随机源按配置权重抽取，只有昨天的记录参与延续；同账号同站点日的心情和短句在操作页面前保存，重试不重抽。优先从离线语料库摘取文字，原心情模板作为后备；不生成个人经历。短句避开之前 365 个日历日用过及高度相似的内容；候选用尽时改选「没心情」并留空。短句可能成为主页公开记录；设置 `"checkin_mood_random": false` 立即停止发布，优先于已存随机计划。风格和来源见[语料说明](#journal-corpus)。
 - **成功判定**：不以「点到按钮」或退出码为准。只有查到当天、本账号名下、正数的大米奖励流水，签到和答题两项才报 `complete`；网站或验证异常时如实报失败。原始结果留在本机 `work/local-toolkit-state/latest-daily.json`，可离线复查。
 
 <a id="ai"></a>
@@ -143,6 +143,62 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli status
 ```
 
 值不合法会报 `invalid_local_schedule_config`，不会悄悄退回默认。检查命令输出的 `schedule` 段说明模式、时区、曲线与建议触发频率。随机模式建议操作系统每分钟直接调用 `daily --resume`，不要每分钟启动 AI 会话；未到点和已完成时仅查询本机数据。实际执行可能因调度延迟、休眠或网络超过目标时间，醒来后仅恢复当前站点日。
+
+<a id="journal-corpus"></a>
+
+### 大文本库与文案风格
+
+内置 `journal-corpus.json` 从 **136,320 个原始片段**筛选、去重，含 **35,469 条真实摘句**：35,432 条带作者的唐诗摘句，37 条现代短句。它不是几万条现代口语。数据约 2.4 MB，日常运行完全离线读取，不下载巨型数据、不调用外部文案 API。
+
+在本机 `account.json` 增加一个可选字段：
+
+```json
+{ "username": "你的用户名", "uid": 123456, "journal_style": "mixed" }
+```
+
+- `mixed`（默认）：优先选现代短句的概率 80%，诗句 20%。某类没有合格候选就尝试另一类；由于现代池很小，长期运行后诗句比例可能远高于 20%。
+- `modern`：只从现代池选语料，不使用诗词；用尽时尝试原心情模板。因此这项配置并不能提供几万条口语。
+- `poetry`：从诗词池选语料；用尽时尝试原心情模板。摘句保留原文和作者，可能有繁体字。
+
+心情权重与文案风格分开配置，摘句不保证与心情标签语义一致。风格变化不覆盖当天已保存的选择；关闭 `checkin_mood_random` 仍立即生效。不改变执行时间、站点日、签到和答题奖励核验。
+
+`journal_style` 只能使用上面三个字符串，非法值返回 `invalid_local_account_config`，不会悄悄换风格。
+
+选择时用操作系统随机源，过滤该账号之前 365 个日历日的已用文案；去掉标点、空格和诗句署名后比较字符三元组，Dice 相似度 ≥80% 的候选也排除。原模板后备遵守同样的规则。所有候选耗尽时留空，不无限重抽。未完成的当天计划重试仍复用原句。繁简转换及语义改写不在此近似检测的保证范围内；不同账号不共享历史，不能保证全站零碰撞。
+
+**来源与授权：** [Common Voice](https://github.com/common-voice/common-voice) 的 CC0 句子文本、[moztw/cc0-sentences](https://github.com/moztw/cc0-sentences) 的 CC0 文本、[chinese-poetry](https://github.com/chinese-poetry/chinese-poetry) 的古代唐诗数据库（MIT）。许可证说明保存在 `corpus-notices.txt`；`journal-corpus.json` 的 `sources` 记录固定提交、原文件路径和 SHA-256，每条记录还包含来源编号和从零开始的原文位置。筛选限制长度、文字类型及主题，排除大量新闻、地址、人物、法律、医疗和不完整片段；规则筛选不等同于逐句人工审定。没有把授权不清晰的网页语料直接搬进仓库。
+
+**开发者重建词库：** 从源码包的工具目录执行。只用于更新语料，日常用户无需运行。准备一个仓库外的缓存目录，从内置 `sources` 下载固定版本文件并核对哈希：
+
+```python
+# 保存为仓库外的 prepare-corpus.py，再从工具目录运行。
+import hashlib
+import json
+from pathlib import Path
+from urllib.parse import quote
+from urllib.request import urlopen
+
+cache = Path('../../work/corpus-inputs')
+cache.mkdir(parents=True, exist_ok=True)
+sources = json.loads(Path('journal-corpus.json').read_text(encoding='utf-8'))['sources']
+for source in sources:
+    project = source['repository'].removeprefix('https://github.com/')
+    url = 'https://raw.githubusercontent.com/' + project + '/' + source['revision'] + '/' + quote(source['path'], safe='/')
+    with urlopen(url, timeout=60) as response:
+        raw = response.read()
+    if hashlib.sha256(raw).hexdigest() != source['sha256']:
+        raise ValueError('Source hash mismatch; do not rebuild')
+    (cache / source['file']).write_bytes(raw)
+(cache / 'sources.json').write_text(json.dumps(sources, ensure_ascii=False), encoding='utf-8')
+```
+
+然后用已安装工具依赖的 Python 运行：
+
+```text
+python -X utf8 corpus.py --sources ../../work/corpus-inputs/sources.json --inputs ../../work/corpus-inputs --output journal-corpus.json
+```
+
+提取器不联网；再次核验固定源文件哈希、过滤、去重，校验完整结果后原子替换。没有候选、文件损坏或超过 4 MB 时拒绝更新。修改筛选或源版本后应走正常 PR、对应回归与 CI，并同步这里的实际数量。原始文本缓存和使用历史不提交 Git；语料更新计入运行指纹，常驻 MCP 需要重连。GitHub 源码更新与 PyPI 发布是两个步骤，`@latest` 用户只有在发布新版软件包后才会获得更新。
 
 **密码**：交互输入一次，存进钥匙串 / DPAPI。下面这行用 Python 的隐藏输入读取密码、按 `account.json` 的用户名封装后交给 `save-credentials`，密码不进 shell 历史，macOS 上也不进 `security` 的命令行参数（钥匙串只接受可打印 ASCII 口令，其他字符会报 `unsupported_password_characters`）。在仓库根目录执行。
 

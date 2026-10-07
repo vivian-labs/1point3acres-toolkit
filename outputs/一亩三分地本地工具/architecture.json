@@ -5,7 +5,8 @@
     "contracts": [],
     "rules": [
       "settings",
-      "contracts"
+      "contracts",
+      "corpus"
     ],
     "secure": [
       "settings"
@@ -36,7 +37,8 @@
       "contracts",
       "library",
       "browser",
-      "rules"
+      "rules",
+      "corpus"
     ],
     "interact": [
       "settings",
@@ -78,6 +80,9 @@
     "entry": [
       "mcp_server",
       "cli"
+    ],
+    "corpus": [
+      "settings"
     ]
   },
   "assets": [
@@ -209,7 +214,8 @@
     "check.py": "唯一离线检查入口：阶段选择、依赖校验、测试执行、脱敏报告和 CI 汇总",
     "entry.py": "安装版入口：pip / uvx 装好后的两个命令；启动前恢复平铺布局，不含任何业务逻辑",
     "pyproject.toml": "PyPI 打包元数据：包名、版本、依赖锁定、入口命令、目录映射；依赖与入口以本文件和 settings 为准",
-    "server.json": "MCP 官方目录的登记条目：名字、版本、PyPI 包；版本必须与 pyproject.toml 一致"
+    "server.json": "MCP 官方目录的登记条目：名字、版本、PyPI 包；版本必须与 pyproject.toml 一致",
+    "corpus.py": "离线语料提取、来源校验、文案选择与近似重复判定；不联网、不提交站点"
   },
   "ci": {
     "tests": {
@@ -247,7 +253,8 @@
         "tests/test_browser_timeouts.py",
         "tests/test_window_parking.py",
         "tests/test_packaging.py",
-        "tests/test_daily_journal.py"
+        "tests/test_daily_journal.py",
+        "tests/test_corpus.py"
       ],
       "integration": [
         "tests/test_mcp_integration.py",
@@ -305,7 +312,12 @@
       "answers.json",
       "mood-phrases.json",
       "architecture.json",
-      "requirements.txt"
-    ]
+      "requirements.txt",
+      "journal-corpus.json",
+      "corpus-notices.txt"
+    ],
+    "data_limits": {
+      "journal-corpus.json": 4000000
+    }
   }
 }

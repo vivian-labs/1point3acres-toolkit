@@ -11,12 +11,16 @@ class GovernanceTests(unittest.TestCase):
         g = self.scanner()
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / 'architecture.json').write_text(json.dumps({'modules': {'settings': []}}), encoding='utf-8')
-            for name in ('settings.py', 'answers.json', 'mood-phrases.json'):
+            (root / 'architecture.json').write_text(json.dumps({'modules': {'settings': []},
+                'publication': {'package_files': ['journal-corpus.json']}}), encoding='utf-8')
+            for name in ('settings.py', 'answers.json', 'mood-phrases.json', 'journal-corpus.json'):
                 (root / name).write_text('{}', encoding='utf-8')
             before = g.source_fingerprint(root)
             (root / 'account.json').write_text('private sentinel', encoding='utf-8')
             self.assertEqual(g.source_fingerprint(root), before)
+            (root / 'journal-corpus.json').write_text('{"changed":true}', encoding='utf-8')
+            self.assertNotEqual(g.source_fingerprint(root), before)
+            before = g.source_fingerprint(root)
             (root / 'settings.py').write_text('VALUE = 2', encoding='utf-8')
             self.assertNotEqual(g.source_fingerprint(root), before)
 
