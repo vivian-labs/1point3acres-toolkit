@@ -173,6 +173,30 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), 'synthetic-input')
             self.assertEqual(result.stderr.strip(), 'streamed-error')
 
+    def test_real_shallow_mirror_tracks_two_successive_main_commits(self):
+        from updates import command
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'source'
+            def git(*arguments):
+                result = command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.org',
+                                  *arguments], timeout=10)
+                self.assertEqual(result.returncode, 0)
+                return result.stdout.strip()
+            git('init', '--initial-branch=main', source)
+            manager = self.make(directory)
+            manager.cache.mkdir(parents=True)
+            revisions = []
+            with patch('updates.UPDATE_GIT_URLS', (str(source),)):
+                for content in ('first', 'second'):
+                    (source / 'fixture.txt').write_text(content)
+                    git('-C', source, 'add', 'fixture.txt')
+                    git('-C', source, 'commit', '-m', content)
+                    expected = git('-C', source, 'rev-parse', 'HEAD')
+                    actual = manager._fetch()
+                    self.assertEqual(actual, expected)
+                    revisions.append(actual)
+            self.assertNotEqual(*revisions)
+
 
 if __name__ == '__main__':
     unittest.main()

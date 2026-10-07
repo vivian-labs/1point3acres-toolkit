@@ -170,7 +170,7 @@ class Manager:
         for url in UPDATE_GIT_URLS:
             try:
                 result = command(['git', '--git-dir', self.mirror, 'fetch', '--no-tags', '--depth=1', url,
-                                  'refs/heads/main:refs/remotes/upstream/main'], env=env, timeout=UPDATE_FETCH_TIMEOUT)
+                                  '+refs/heads/main:refs/remotes/upstream/main'], env=env, timeout=UPDATE_FETCH_TIMEOUT)
                 if result.returncode == 0:
                     break
             except subprocess.TimeoutExpired:
