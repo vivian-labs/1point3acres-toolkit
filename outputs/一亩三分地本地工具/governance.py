@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 import settings
 from presentation import render_reader
 from contracts import RunStatus
+from updates import update_info
 
 
 def source_fingerprint(root=None):
@@ -72,7 +73,8 @@ def runtime_info():
             'schedule': settings.daily_schedule_summary(), 'quiz_gap_seconds': list(settings.QUIZ_GAP_SECONDS),
             'recovery_minutes': list(settings.DAILY_RECOVERY_MINUTES),
             'daily_run_timeout': settings.DAILY_RUN_TIMEOUT, 'daily_retry_limit': settings.DAILY_RETRY_LIMIT,
-            'mood_random_enabled': settings.CHECKIN_MOOD_RANDOM}
+            'mood_random_enabled': settings.CHECKIN_MOOD_RANDOM, 'updates': update_info(),
+            'update_startup_budget_seconds': settings.UPDATE_STARTUP_BUDGET_SECONDS}
 
 
 def _literal_strings(node):
@@ -267,7 +269,8 @@ def generated_files(root, policy, include_reader=True):
     # The client config follows the data directory when one is named (installed package, moved checkout);
     # a plain checkout keeps it beside the source, which is also where the delivery gate compares it.
     config = settings.CONFIG_FILE if settings.DATA_HOME else root / 'mcp.config.json'
-    files = {config: json.dumps(settings.mcp_config(), ensure_ascii=False, indent=2) + '\n'}
+    # Client registration belongs to the stable bootstrap, never to an immutable business worker.
+    files = {} if settings.MANAGED_WORKER else {config: json.dumps(settings.mcp_config(), ensure_ascii=False, indent=2) + '\n'}
     data_file = settings.EXPORT_DIRECTORY / settings.EXPORT_FILES['json']
     if include_reader and data_file.exists():
         payload = json.loads(data_file.read_text(encoding='utf-8'))

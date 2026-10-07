@@ -2,7 +2,7 @@
 
 在自己的电脑上跑一亩三分地的每日签到、每日答题，以及 Stripe 面经采集、离线搜索和导出。用命令行，也能接入支持本地 stdio 的 MCP 客户端；两者共用同一份账号会话和资料库。
 
-支持 **macOS 与 Windows**，都需要 **Chrome + Python 3.12**。账号身份、密码、浏览器会话和数据库只留在本机：密码在 macOS 存进登录钥匙串、在 Windows 用 DPAPI 加密，都不写进仓库。
+支持 **macOS 与 Windows**，都需要 **Chrome + Git + Python 3.12**。账号身份、密码、浏览器会话和数据库只留在本机：密码在 macOS 存进登录钥匙串、在 Windows 用 DPAPI 加密，都不写进仓库。
 
 依赖清单见 [requirements.txt](./requirements.txt)。想先看带图的原理讲解（签到、答题、奖励核对、失败重试、调度各是怎么做的），读仓库根目录的 [README](../../README.md)；本文是操作手册。
 
@@ -27,25 +27,25 @@
 
 **安装助手按以下步骤执行：**
 
-1. 检查 Chrome、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，补齐缺少的运行环境，找到 `uvx` 的绝对路径。
+1. 检查 Chrome、Git、Python 3.12 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)，补齐缺少的运行环境，找到 `uvx` 的绝对路径。
 2. 执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 验证软件包能启动。后续命令使用同一前缀；不要把 uv 缓存目录里的 Python 或脚本路径保存成启动入口。
 3. 按 [软件包安装](#pip) 和 [配置账号](#account) 设置个人数据目录、账号和登录。已有安装先按迁移步骤保留数据；MCP 和每日计划使用同一个数据目录。
 4. 将 MCP 注册为 `uvx 1point3acres-toolkit@latest`，保留客户端其他配置和环境变量；连接后用 `runtime_info` 核对版本。
 5. 按 [首次运行](#first-run) 验证登录和每日任务，再按 [每日自动运行](#automation) 创建唯一的系统每日计划，入口必须是 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume`。
-6. 读回客户端注册和系统任务，确认两处都使用 `@latest`、`uvx` 绝对路径和相同数据目录；报告安装版本、任务是否启用，以及 MCP 在重连时更新。不能只执行一次安装命令就宣称已经配置自动更新。
+6. 读回客户端注册和系统任务，确认两处都使用 `@latest`、`uvx` 绝对路径和相同数据目录；报告安装版本、任务是否启用，以及 MCP 已连接时也会在当前调用结束后更新。不能只执行一次安装命令就宣称已经配置自动更新。
 
-默认不使用 `git clone` + 虚拟环境、单独 `pip install` 或 `uv tool install` 作为用户的自动更新方案。这些方式以及固定版本仅在用户明确选择时使用。`@latest` 在每次启动时检查最新兼容发布版本，有新版时由 uv 准备并运行；每日任务会在下一次触发时更新，常驻 MCP 需要重连。需要联网获取新版；GitHub 提交只有发布到 PyPI 后才会到达用户。
+默认不使用 `git clone` + 虚拟环境、单独 `pip install` 或 `uv tool install` 作为用户的自动更新方案。这些方式以及固定版本仅在用户明确选择时使用。`@latest` 获取最新兼容的软件包启动器。1.2.0 起，启动器会继续检查组织仓库 main 的最新提交，只有该提交通过完整 CI 才准备并启用。CLI 在业务命令前更新，常驻 MCP 在业务调用前及空闲时检查，等当前调用结束后切换后台进程。需要 Git 和网络；下载、依赖或校验失败时继续运行上次可用版本。
 
 你只需要参与两件事：
 
 - 提供自己的论坛用户名和数字 uid（写进 `account.json`）。
 - 在助手弹出的安全输入框里输一次论坛密码。密码直接进系统钥匙串 / DPAPI，不进仓库、不进对话、助手也不经手明文。
 
-之后由计划自动运行；电脑需要可用，异常由健康观察报告。想自己动手并保持自动更新，按 [软件包安装](#pip) 配置；下面的源码安装供开发者使用，需要手动更新。
+之后由计划自动运行；电脑需要可用，异常由健康观察报告。想自己动手并保持自动更新，按 [软件包安装](#pip) 配置；下面的源码安装供开发者使用；源码入口也默认启用相同的更新逻辑。
 
 <a id="install"></a>
 
-## 源码安装（开发者，手动更新）
+## 源码安装（开发者）
 
 前置：装好 Git、Chrome、Python 3.12（macOS 用 `python3.12`，Windows 用 `py -3.12`）。
 
@@ -112,9 +112,9 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli status
 
 后文的 `./运行.sh` 可替换为 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli`，例如后接 `save-credentials`。密码输入方式不变。
 
-`@latest` 在每次启动时请求 PyPI 上最新的兼容发布版本，已运行的 MCP 不会热更新；发布后需要重连服务。不带 `@latest` 的 `uvx` 会复用缓存，不能保证获取新发布的版本。见 [uv 的工具版本说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。
+`@latest` 在每次启动时请求 PyPI 上最新的兼容启动器。1.2.0 起，启动器还能直接跟踪通过 CI 的 main，已连接的 MCP 会在调用结束后更新业务进程，保留连接。不带 `@latest` 的 `uvx` 会复用缓存，不能保证获取新发布的版本。见 [uv 的工具版本说明](https://docs.astral.sh/uv/concepts/tools/#tool-versions)。
 
-**已有用户迁移**：在客户端现有的 `1point3acres-local` 配置中把 `command` 改为 `uvx`，把整个 `args` 改为 `["1point3acres-toolkit@latest"]`，保留原来的环境变量；客户端找不到 uvx 时填写其绝对路径。停止旧服务后重连，再调用 `runtime_info` 核对版本。只更新仓库里的配置文件不会修改客户端已保存的注册。pip 用户不想使用 uv 时，可继续直接调用原安装环境中的 `1point3acres-toolkit`，自行用 pip 升级。
+**已有用户迁移**：在客户端现有的 `1point3acres-local` 配置中把 `command` 改为 `uvx`，把整个 `args` 改为 `["1point3acres-toolkit@latest"]`，保留原来的环境变量；客户端找不到 uvx 时填写其绝对路径。停止旧服务后重连，再调用 `runtime_info` 核对版本。只更新仓库里的配置文件不会修改客户端已保存的注册。pip 用户可先用 pip 升级到 1.2.0，再继续调用原安装环境中的 `1point3acres-toolkit`；该入口同样跟踪通过 CI 的 main。旧进程首次迁移仍需重连一次。
 
 仓库版和软件包版默认数据目录不同，改启动命令不会自动迁移账号和历史。从仓库迁移前停掉旧 MCP 和每日计划，备份数据；将 `work/local-toolkit-state/` 的内容复制到软件包数据目录的 `state/`，将 `work/account-browser/chrome-profile/` 复制到 `chrome-profile/`，已有目标文件不要直接覆盖。导出资料按需复制；凭据仍按原平台方式管理。迁移后核对账号、会话和历史，再恢复唯一的每日计划；不要删除旧数据。自定义 `ONEPOINT3ACRES_HOME` 时，MCP 和定时任务必须使用相同值。
 
@@ -198,7 +198,7 @@ for source in sources:
 python -X utf8 corpus.py --sources ../../work/corpus-inputs/sources.json --inputs ../../work/corpus-inputs --output journal-corpus.json
 ```
 
-提取器不联网；再次核验固定源文件哈希、过滤、去重，校验完整结果后原子替换。没有候选、文件损坏或超过 4 MB 时拒绝更新。修改筛选或源版本后应走正常 PR、对应回归与 CI，并同步这里的实际数量。原始文本缓存和使用历史不提交 Git；语料更新计入运行指纹，常驻 MCP 需要重连。GitHub 源码更新与 PyPI 发布是两个步骤，`@latest` 用户只有在发布新版软件包后才会获得更新。
+提取器不联网；再次核验固定源文件哈希、过滤、去重，校验完整结果后原子替换。没有候选、文件损坏或超过 4 MB 时拒绝更新。修改筛选或源版本后应走正常 PR、对应回归与 CI，并同步这里的实际数量。原始文本缓存和使用历史不提交 Git；语料更新计入运行指纹，并包含在自动准备的新版本中。已安装 1.2.0 启动器后，常驻 MCP 会在当前调用结束后使用通过 CI 的新语料，无需为每次语料变更单独发布软件包。
 
 **密码**：交互输入一次，存进钥匙串 / DPAPI。下面这行用 Python 的隐藏输入读取密码、按 `account.json` 的用户名封装后交给 `save-credentials`，密码不进 shell 历史，macOS 上也不进 `security` 的命令行参数（钥匙串只接受可打印 ASCII 口令，其他字符会报 `unsupported_password_characters`）。在仓库根目录执行。
 
@@ -266,9 +266,9 @@ cd outputs/一亩三分地本地工具
 
 失败后按 5、10、20、40、60 分钟逐步延长恢复间隔，上限 60 分钟。间隔依据已保存的运行记录计算，重启不重置；等待期返回 `decision=recovery_wait`、`status=needs_attention` 和 `retry_at`，不开浏览器，不表示签到答题已成功。只读查询不计入失败次数；明确提供完整原题和答案的补答可直接核对并尝试，仍受提交保护约束。
 
-思路：让操作系统每分钟通过 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume` 启动一次。uvx 先检查软件包更新，工具再判断是否到点、当天是否已完成；`not_due` / `already_complete` 时不开浏览器，只有真正该签到时才动作。等待与已完成状态不产生论坛请求，但启动器仍可能访问包索引。手动 `daily` 不受随机窗口约束；定时计划必须使用 `daily --resume`。
+思路：让操作系统每分钟通过 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume` 启动一次。uvx 先检查启动器软件包更新，启动器检查通过 CI 的源码版本，工具再判断是否到点、当天是否已完成；`not_due` / `already_complete` 时不开浏览器，只有真正该签到时才动作。等待与已完成状态不产生论坛请求，但启动器仍可能访问包索引。手动 `daily` 不受随机窗口约束；定时计划必须使用 `daily --resume`。
 
-**uvx 软件包版**：定时任务的程序填 `uvx` 的绝对路径，参数依次填写 `--from`、`1point3acres-toolkit@latest`、`1point3acres-toolkit-cli`、`daily`、`--resume`。macOS 可用 `command -v uvx`，Windows 可用 `where.exe uvx` 查找路径。任务与 MCP 必须使用同一个 `ONEPOINT3ACRES_HOME`（或都使用默认目录），并设置 `PYTHONUTF8=1`；替换旧任务，避免重复执行。每次触发都会检查软件包更新，可能访问包索引，有网络和启动开销；业务层的“未到点只读本地记录”不包含 uvx 的更新检查。若不希望每分钟检查更新，可使用 pip 安装版的绝对入口路径，并按维护步骤手动升级。
+**uvx 软件包版**：定时任务的程序填 `uvx` 的绝对路径，参数依次填写 `--from`、`1point3acres-toolkit@latest`、`1point3acres-toolkit-cli`、`daily`、`--resume`。macOS 可用 `command -v uvx`，Windows 可用 `where.exe uvx` 查找路径。任务与 MCP 必须使用同一个 `ONEPOINT3ACRES_HOME`（或都使用默认目录），并设置 `PYTHONUTF8=1`；替换旧任务，避免重复执行。每次触发都会检查软件包更新，可能访问包索引，有网络和启动开销；业务层的“未到点只读本地记录”不包含 uvx 的更新检查。若不希望检查更新，可设置 `ONEPOINT3ACRES_AUTO_UPDATE=0`，并自行维护版本。
 
 - **交给 AI 助手最省事**：让它按你的系统装好计划（macOS 用 launchd LaunchAgent，Windows 用任务计划程序），使用上面的 uvx 自动更新入口，并读回任务配置核对。
 - **自己配**：按下面的软件包配置或样例创建任务。计划时间在 `account.json` 里配（见[配置账号](#account)）；执行 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info`，输出的 `schedule` 段给出当前模式、时区、轮询间隔与 rrule。随机模式的具体时间按账号与站点日保存在本机数据库，不在每次检查时重抽。
@@ -289,9 +289,9 @@ cd outputs/一亩三分地本地工具
 
 任务必须设置 `PYTHONUTF8=1`；若 MCP 设置了 `ONEPOINT3ACRES_HOME`，任务也要传入相同值。任务计划程序没有单独的环境变量输入栏，可让助手在个人数据目录创建本机 PowerShell 启动脚本，在脚本中设置这两个变量后用 `&` 调用 uvx 的绝对路径及上述参数，并以 `exit $LASTEXITCODE` 返回结果；任务通过 `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -File` 调用该脚本。不要将密码写入脚本或任务参数。
 
-安装完成后读回任务的程序、参数和包装脚本，核对 `@latest`。仅在终端跑过一次 uvx、任务仍指向旧 `pythonw.exe`，并没有启用任务自动更新。电脑需开机且当前用户已登录；休眠、注销时不能保证执行。任务退出成功不等于奖励到账，用 `daily-history` 核对业务结果。
+安装完成后读回任务的程序、参数和包装脚本，核对 `@latest`。仅在终端跑过一次 uvx，并不能证明任务入口已经更新；源码任务则须确认其入口已升级到 1.2.0 启动器。电脑需开机且当前用户已登录；休眠、注销时不能保证执行。任务退出成功不等于奖励到账，用 `daily-history` 核对业务结果。
 
-### Windows：源码版每日计划（开发者，手动更新）
+### Windows：源码版每日计划（开发者）
 
 在工具目录的 PowerShell 中执行：
 
@@ -304,7 +304,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\计划.ps1 -Action Sta
 
 `info` 离线输出当前源码版本、指纹和有效配置，不输出账号身份或密码。先确认 `schedule.mode=random`、`schedule.timezone=America/Los_Angeles`、窗口为 10:00–12:00。旧配置含 `schedule_time` 时保留固定模式；要切换需在账号配置设置 `"schedule_mode": "random"`。
 
-安装脚本从统一配置读取轮询间隔，注册 `1point3acres-toolkit-daily`，使用当前虚拟环境的 `pythonw.exe`，直接执行 `daily --resume`。默认每分钟触发；同一任务尚未退出时忽略新实例，运行时限覆盖一次自动重试。重复安装更新同一任务，拒绝覆盖其他 checkout 的同名任务。安装不要求管理员权限，也不保存 Windows 密码。
+安装脚本从统一配置读取轮询间隔，注册 `1point3acres-toolkit-daily`，使用当前虚拟环境的 `pythonw.exe`，直接执行 `daily --resume`。默认每分钟触发；同一任务尚未退出时忽略新实例，运行时限覆盖更新准备与一次自动重试。重复安装更新同一任务，拒绝覆盖其他 checkout 的同名任务。安装不要求管理员权限，也不保存 Windows 密码。
 
 电脑必须开机、当前 Windows 用户已登录；锁屏可以保持登录，注销、关机或休眠期间不能保证运行。计划不会唤醒电脑；恢复可用后补检查当天。任务计划程序的成功退出只表示调用完成；当天是否成功请看 `daily-history`，不能只看 `last_result=0`。
 
@@ -350,7 +350,7 @@ macOS LaunchAgent 样例，存为 `~/Library/LaunchAgents/local.1point3acres-too
 
 装载：`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.1point3acres-toolkit.daily.plist`；停用：`launchctl bootout gui/$(id -u)/local.1point3acres-toolkit.daily`。改过 plist 要先停用再装载，再用 `launchctl print gui/$(id -u)/local.1point3acres-toolkit.daily` 核对已加载的程序和参数。要用下面的 `pmset` / `caffeinate` 加固时，把 `ProgramArguments` 换成你的包装脚本，脚本仍须调用 uvx 的 `@latest` 入口。
 
-开发者使用源码时，将 `ProgramArguments` 改为仓库内 `运行.sh` 的绝对路径、`daily`、`--resume`，并使数据目录与源码版 MCP 一致。这种配置需要手动更新仓库，不具备软件包自动更新能力。
+开发者使用源码时，将 `ProgramArguments` 改为仓库内 `运行.sh` 的绝对路径、`daily`、`--resume`，并使数据目录与源码版 MCP 一致。1.2.0 起，这种入口也通过同一启动器更新；开发分支应设置 `ONEPOINT3ACRES_AUTO_UPDATE=0`。
 
 - **macOS 可选加固（写在本机包装脚本里，不进仓库）**：合盖后的短暂后台唤醒（DarkWake）里也可能触发计划，脚本开头加 `pmset -g systemstate | grep -q Graphics || exit 0` 可以避开；用 `caffeinate -i` 包住运行命令能防止空闲睡眠（合盖仍会睡，只是减少中途被打断的概率）。另外，工具的 Chrome 在后台运行时，从 Dock / Spotlight 打开 Chrome 会进入工具的专用配置目录（同一个应用只保留一个实例）：想开自己的 Chrome，等任务结束，或用 `open -na "Google Chrome"` 另起一个实例；如果发现自己的登录落进了 `work/account-browser/chrome-profile`，在那个实例里退出登录即可。
 - **macOS 窗口行为**：系统不允许把窗口放到屏幕外，所以专用 Chrome 启动瞬间会短暂出现并切到前台（约 1 秒），随后自动最小化到 Dock、把焦点还给你之前正在用的应用；这个瞬间无法消除。微信扫码登录时窗口会被调到屏幕上，结束后同样最小化。Windows 上窗口始终隐藏。
@@ -481,7 +481,7 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 软件包版本不用生成配置，把上面两条里的两个路径换成 `uvx 1point3acres-toolkit@latest` 即可（见[软件包安装](#pip)）。`claude mcp list` 会做一次握手并显示 `✔ Connected`；`codex mcp list` 显示 `enabled`。注册信息写在各客户端自己的用户配置里（`~/.claude.json`、`~/.codex/config.toml`），含本机绝对路径，不进仓库。
 
-连接后先调用 `runtime_info`，确认 `restart_required=false`、`loaded.fingerprint` 与 `disk.fingerprint` 一致，且版本符合预期。更新源码或账号配置后重连 MCP 服务，再调用它确认；旧服务若还没有这个工具，同样需要重连。版本指纹只覆盖运行源码与公共资源，不覆盖凭据、Cookie 或数据库；无 Git 的 ZIP 安装 `revision` 为 null，指纹仍可用。`disk.dirty` 表示 Git 已跟踪文件是否存在本地修改。
+连接后先调用 `runtime_info`，确认 `restart_required=false`、`loaded.fingerprint` 与 `disk.fingerprint` 一致，且版本符合预期。兼容的源码更新会自动切换，账号配置变更仍需重连；1.1.0 或更旧服务首次迁移时也需要重连一次。版本指纹只覆盖运行源码与公共资源，不覆盖凭据、Cookie 或数据库；无 Git 的 ZIP 安装 `revision` 为 null，指纹仍可用。`disk.dirty` 表示 Git 已跟踪文件是否存在本地修改。
 
 也可调用 `interviews_search`（query 传空字符串）验证：应返回 `records` 和 `stats`，新库为空是正常的，这一步不访问网站。`daily_run`、`stripe_collect` 会执行真实业务，确认要做时再调。可用工具名以 `architecture.json` 的 `public_tools` 为准。
 
@@ -517,24 +517,27 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 `work/` 目录保存运行环境、加密凭据、数据库、专用 Chrome 会话和每日历史，都不入库；加密凭据与本机绑定，换电脑要重新配置，不能只拷贝密文。
 
-**推荐的 uvx 接入**：维护者发布新包后，等待当前操作结束，重连 MCP 即可请求新版，再用 `runtime_info` 核对。使用上述 `@latest` 定时入口的计划会在下一次启动时请求新版；仍指向旧仓库或 pip 环境的计划不会跟着改变。个人配置与历史保留在数据目录。离线时不保证能获取新版。
+**默认行为（1.2.0 起）**：业务 CLI 启动时检查 `vivian-labs/1point3acres-toolkit` 的 main。只有相同提交的 Project consistency push 检查已全部通过，才在独立目录准备代码和依赖，完成依赖、静态和启动校验，再原子切换。不会在你正在使用的 checkout 里执行 pull，也不会覆盖个人改动。`info`、`daily-history` 读取本地状态，不检查网络更新；uvx 本身仍可能访问软件包索引。
 
-**pip 安装版**：暂停每日计划，等待当前运行结束，在原环境执行 `python -m pip install --upgrade 1point3acres-toolkit`，用 `1point3acres-toolkit-cli info` 核对后恢复计划并重连 MCP。
+**常驻 MCP**：启动、业务工具调用前以及空闲时每 60 秒检查。已有调用执行完才切换业务进程；准备期间新业务请求排队，版本、历史和任务控制工具仍可用。客户端连接保留，并收到工具列表变更通知。不会重放已经发送的请求。取消尚未发送的请求会移除队列项；已经开始的业务请求为保护提交状态会安全结束，取消后的结果不再返回客户端，长任务请使用 `control_task` 暂停。协议或能力不兼容的新进程会被拒绝，保留旧进程并报告 `mcp_fallback`，此时需升级客户端或重连处理。
 
-**更新源码（开发者）**：先暂停每日计划，在仓库根目录确认 `git status --short` 干净（有自己的改动先处理，别用硬重置覆盖），再 `git pull --ff-only`，然后重装依赖并跑 `检查.sh --sync`，通过后运行 `info` 核对版本和配置，再恢复计划。Windows 可用 `计划.ps1 -Action Remove` 暂停、更新后 `Install` 恢复；常驻 MCP 需要在客户端重连，随后用 `runtime_info` 确认新进程。不要删除 `work/` 或专用 Chrome 配置来完成升级。
+**安装与首次迁移**：安装 Chrome、Git、Python 3.12+ 和 uv；使用前面的 `uvx …@latest` 入口。pip 用户执行 `python -m pip install --upgrade 1point3acres-toolkit`。源码用户暂停每日计划并等待正在执行的操作结束，确认工作区干净后 `git pull --ff-only`，安装依赖，再执行 `检查.cmd --sync` / `检查.sh --sync`。从 1.1.0 或更旧版本迁移，需要停止旧 MCP 并重连一次，确认 `runtime_info` 已加载新启动器。之后兼容的业务源码变更无需每次发 PyPI 或重连。启动器本身、账号配置或不兼容协议变更仍可能需要重启。源码 Windows 用户重新执行 `计划.ps1 -Action Install`，更新原任务的执行时限，保留唯一每日计划。
 
-改代码后统一跑 `检查.sh`（完整离线检查与回归）和 `检查.sh --sync`（重建生成文件后再检查）。题库映射源自 eagleoflqj/p1a3_script（原作者 Liumeo）。
+**数据与缓存**：保留同一个 `ONEPOINT3ACRES_HOME`。账号、凭据、专用 Chrome、历史和导出路径不随版本变化。源码更新缓存在原工作区的 `work/toolkit-updates`，软件包缓存在个人数据目录的 `updates`；也可用 `ONEPOINT3ACRES_UPDATE_CACHE` 指定私有位置。缓存含 Git 镜像、按提交隔离的源码、必要时的依赖环境和激活指针，不提交到 Git。不要删除 `work/`、账号数据目录或 Chrome 配置来升级。失败时不自动删除或覆盖这些数据。
 
+**确认实际版本**：CLI 用 `info`，MCP 用 `runtime_info` 查看 `loaded.revision` 和指纹；根目录 `git log` 只代表启动器 checkout。`updates` 给出最后检查时间、激活和可用提交。`current` / `updated` 是更新状态，`waiting_for_ci` 表示新提交尚未通过 CI，`fallback` 表示无法完成更新；均不代表签到、答题或奖励成功。业务结果仍用 `daily-history` 核对。网络故障、Git 不可用、依赖安装失败或同时有其他进程准备版本时，继续使用已验证版本，错误不输出凭据或子进程原始日志。
+
+**离线与开发分支**：源码单次命令用 `运行.cmd --offline status` / `./运行.sh --offline status`，启动器用 `python launcher.py mcp --offline`。设置环境变量 `ONEPOINT3ACRES_AUTO_UPDATE=0` 可停用自动检查；开发和测试自己的分支时应使用该变量，避免启动器转去运行 main。离线模式使用已激活缓存（没有缓存则使用当前安装源码），无法保证最新。uvx 的包索引检查独立于本工具开关；完全离线时使用已安装的绝对入口路径。
 <a id="publishing"></a>
 
 ### 发布新版本（维护者）
 
 [Publish to PyPI](https://github.com/vivian-labs/1point3acres-toolkit/actions/workflows/publish.yml) 将 PyPI 和 GitHub Release 串成一次发布，继续使用 Trusted Publishing，无需长期 API token。`main` 的 Project consistency 成功后自动检查该提交；只有版本号相对第一父提交提升时才发包，普通提交直接跳过。
 
-1. 同步提高根目录 `pyproject.toml`、`server.json` 顶层和 package 的版本号，在同一个 PR 更新 README，合并到 `main`。版本必须是稳定的 `major.minor.patch`；本次 `1.2.0` 包含可信浏览器点击、后台焦点修复和离线日记语料 / 365 天去重。
+1. 同步提高根目录 `pyproject.toml`、`server.json` 顶层和 package 的版本号，在同一个 PR 更新 README，合并到 `main`。版本必须是稳定的 `major.minor.patch`；本次 `1.3.0` 包含可信浏览器点击、后台焦点修复、离线日记语料 / 365 天去重，以及 CLI / MCP 自动更新和 Windows 输入输出修复。
 2. 等待 **main 合并提交** 的完整 CI 通过。发布流程固定使用该提交 SHA，不使用之后可能变化的 main，也不接受 PR 检查代替 main 检查。
 3. 工作流构建 wheel/sdist，严格校验，通过短期 OIDC 身份上传 PyPI，再核对两份文件的 SHA-256。只有 PyPI 文件齐全且一致时，才为同一提交创建 `v版本号` 标签和正式 GitHub Release。两个站点不是原子更新；PyPI 失败不会创建 Release，GitHub 阶段失败则显示发布失败并等待恢复。
-4. `uvx …@latest` 每日计划在下一次启动检查并获取新版；常驻 MCP 需要重连。可用 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 检查配置，用 `uvx --from 1point3acres-toolkit@latest python -c 'import importlib.metadata; print(importlib.metadata.version("1point3acres-toolkit"))'` 核对实际安装版本。源码版仍需 `git pull`。
+4. `uvx …@latest` 每日计划在下一次启动检查并获取新包；旧 MCP 首次加载新启动器需要重连，此后兼容业务代码由后台更新器切换。可用 `uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli info` 检查配置，用 `uvx --from 1point3acres-toolkit@latest python -c 'import importlib.metadata; print(importlib.metadata.version("1point3acres-toolkit"))'` 核对实际安装包版本。业务更新器可能运行更新的 main 提交，用 `runtime_info.loaded.revision` 核对；更新本地开发 checkout 仍用 `git pull`。
 
 **失败恢复：** 优先重跑失败的发布任务。也可从 `main` 手动触发 `gh workflow run publish.yml --ref main -f commit=完整版本提交SHA`（省略 `commit` 时检查当前 main）。仍要求版本提升和该提交的成功 CI。构建使用提交时间固定 `SOURCE_DATE_EPOCH`；已有 PyPI 文件必须与本次构建哈希一致，才允许跳过并补齐缺失文件，已有标签也必须指向同一提交。不同内容、撤回的版本或标签冲突会失败，不覆盖已发布文件；应排查后发布新版本。不要提前手工创建正式 Release。
 
@@ -542,7 +545,7 @@ codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- <venv 的 python.exe> <�
 
 PyPI 页面上的说明来自 `PYPI_README.md`，修改它需要随新版本发布，单独合并 README 不会刷新已有包的页面。末尾的 `mcp-name:` 用于目录核对包归属，不能删除。
 
-**MCP 官方目录登记是独立步骤。** PyPI 发布成功不代表已登记到 MCP 官方目录。`server.json` 保留明确的发布版本，目录安装可能固定该版本；只有配置为 `@latest` 的入口采用启动时更新。需要登记时，安装 `mcp-publisher`，执行 `mcp-publisher login github`，用有 vivian-labs 组织权限的账号登录，再执行 `mcp-publisher publish`。
+**MCP 官方目录登记是独立步骤。** PyPI 发布成功不代表已登记到 MCP 官方目录。`server.json` 保留明确的发布版本，目录安装可能固定该版本；1.2.0 起入口默认跟踪通过 CI 的 main；`@latest` 另外检查启动器软件包发布。需要登记时，安装 `mcp-publisher`，执行 `mcp-publisher login github`，用有 vivian-labs 组织权限的账号登录，再执行 `mcp-publisher publish`。
 
 ### 提交中断恢复
 

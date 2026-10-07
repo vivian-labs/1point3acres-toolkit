@@ -13,14 +13,14 @@ def _script_layout():
 
 def main():
     _script_layout()
-    import mcp_server
-    mcp_server.main()
+    from launcher import main as launch
+    raise SystemExit(launch(['mcp']))
 
 
 def cli():
     _script_layout()
-    import cli as command_line
-    command_line.run()
+    from launcher import main as launch
+    raise SystemExit(launch(['cli', *sys.argv[1:]]))
 
 
 if __name__ == '__main__':

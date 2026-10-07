@@ -11,6 +11,7 @@ The full documentation, in Chinese, is in the repository: https://github.com/viv
 
 - macOS or Windows with Google Chrome installed
 - Python 3.12
+- Git for the automatic source update channel
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) for the recommended uvx launcher
 - A 1point3acres account
 
@@ -28,7 +29,7 @@ use the `uvx …@latest` entries for both MCP and the daily scheduler. Follow th
 preserve existing data, and read back the saved client and scheduler configuration before reporting completion.
 Use source checkouts or fixed installations only when requested. A one-time install does not configure automatic updates.
 
-Alternatively, for a manually maintained environment:
+Alternatively, install the same bootstrap in your own environment:
 
 ```sh
 pip install 1point3acres-toolkit
@@ -44,9 +45,13 @@ claude mcp add --scope user 1point3acres-local -e PYTHONUTF8=1 -- uvx 1point3acr
 codex mcp add 1point3acres-local --env PYTHONUTF8=1 -- uvx 1point3acres-toolkit@latest
 ```
 
-`@latest` requests the latest compatible published version whenever the MCP process starts. Reconnect the server
-after a release; an already running process does not update itself. Plain `uvx` can reuse an older cached version.
-See [uv tool versions](https://docs.astral.sh/uv/concepts/tools/#tool-versions). No Git checkout or pull is needed.
+`@latest` requests the latest compatible bootstrap release whenever the MCP process starts. From 1.2.0, the bootstrap
+also follows this repository's main branch and accepts only the exact commit that passed the complete push CI workflow.
+It prepares code and dependencies in an isolated private cache before activation. CLI business commands check before
+execution; a connected MCP bridge checks before business calls and every 60 seconds while idle, switching workers only
+after active requests finish. It keeps the client connection and never replays a submitted business request.
+Git and network access are required. Failed updates keep the last validated version. Plain `uvx` can reuse an older
+bootstrap; see [uv tool versions](https://docs.astral.sh/uv/concepts/tools/#tool-versions).
 
 For an existing client registration, set `command` to `uvx` and replace `args` with
 `["1point3acres-toolkit@latest"]`, preserving environment variables. Use the absolute uvx path if the client cannot
@@ -62,24 +67,26 @@ uvx --from 1point3acres-toolkit@latest 1point3acres-toolkit-cli status
 Use the same prefix for `save-credentials` and other commands. For daily automation, configure the system scheduler
 with the absolute uvx path and arguments `--from 1point3acres-toolkit@latest 1point3acres-toolkit-cli daily --resume`.
 Use the same data directory as MCP and replace the previous daily task. Each launch checks the package index, adding
-network and startup overhead even when the daily task is not due. For a schedule without these update checks, use a
-pip-installed CLI and upgrade that environment manually with `python -m pip install --upgrade 1point3acres-toolkit`
-while tasks are stopped; reconnect MCP afterward. pip users can also keep a direct MCP console-script registration
-without uv. A checkout remains available for developers and requires Git updates.
+network and startup overhead even when the daily task is not due. The toolkit also checks approved source updates.
+Use `ONEPOINT3ACRES_AUTO_UPDATE=0` to disable toolkit update checks for development or an offline installed environment;
+uvx's package-index check is independent. `info` and `daily-history` are offline toolkit health queries.
 
-Check `runtime_info` after reconnecting: verify the expected release and `restart_required=false`.
-A clean fingerprint alone does not prove you have the newest published release. Personal data stays in the data
-directory across package updates. Moving from a checkout requires a separate data migration; see the Chinese manual.
-A version-bump commit on main is published automatically after its full CI succeeds. The workflow uploads and
-verifies the PyPI wheel and sdist before creating the GitHub Release at that exact commit. Ordinary commits do not
-publish packages. Scheduled `uvx …@latest` runs pick up the release on their next launch; reconnect persistent MCP
-servers. Failed releases can be retried, but existing PyPI files must match before they are reused.
-Registry-based installs may pin the version in `server.json`; they do not necessarily use `@latest`.
+Upgrade pre-1.2.0 installations and reconnect their old MCP process once to load the bootstrap. After that, compatible
+business updates switch automatically; bootstrap, account configuration or incompatible protocol changes may still
+require restarting. Check `runtime_info` for the actual `loaded.revision` and sanitized `updates` diagnostics. Personal
+data stays in the same directory; moving from a checkout requires a separate data migration, covered in the manual.
+The initial bootstrap release must be published to PyPI; subsequent compatible business changes can follow approved
+GitHub main commits directly. Registry-based installs may pin the bootstrap version in `server.json`.
 
-## Changes in 1.2.0
+Version-bump commits on main now publish automatically after full CI: upload and verify the PyPI wheel/sdist,
+then create the GitHub Release for that exact commit. Ordinary commits do not publish packages, but can reach
+compatible workers through the source updater. Retries require identical existing PyPI files and tags.
+
+## Changes in 1.3.0 (since PyPI 1.1.0)
 
 - Browser input replaces synthetic submit clicks, and parked pages retain focus without activating the desktop window.
 - Sourced offline journal phrases support style selection and avoid duplicates across 365 days.
+- CLI and persistent MCP workers receive CI-approved source updates; Windows CLI streams are preserved.
 - Version bumps publish to PyPI after main CI, then create the matching GitHub Release.
 
 ## Where it keeps things
@@ -91,13 +98,15 @@ on macOS, `%LOCALAPPDATA%\1point3acres-toolkit` on Windows. Set `ONEPOINT3ACRES_
 - `chrome-profile/`: the dedicated Chrome profile that holds the login session
 - `state/interviews.sqlite` and `Stripe面经资料/`: the interview library and its exports
 - `mcp.config.json`: a uvx `@latest` client entry preserving the data directory, written on first start (requires uv)
+- `updates/`: private source checkouts, dependency environments and the atomic active-version pointer
 
 The forum password never goes in a file. Store it once with `1point3acres-toolkit-cli save-credentials`, which reads a
 JSON object with `username` and `password` on standard input and keeps it in the macOS Keychain or Windows DPAPI.
 
 ## What it will not do
 
-- It talks only to the forum's own hosts; there is no third-party server and no captcha service.
+- Forum operations use only the forum's own hosts. Software updates access the fixed GitHub repository and API;
+  dependency installation uses the configured package index. There is no captcha service.
 - Posting and replying preview by default; a real write to the site needs an explicit flag.
 - It never buys unlocks, never mass-downloads and never marks notifications read.
 

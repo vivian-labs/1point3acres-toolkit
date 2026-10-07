@@ -49,7 +49,8 @@
     "governance": [
       "settings",
       "contracts",
-      "presentation"
+      "presentation",
+      "updates"
     ],
     "cli": [
       "settings",
@@ -59,7 +60,8 @@
       "interact",
       "library",
       "secure",
-      "governance"
+      "governance",
+      "launcher"
     ],
     "mcp_server": [
       "settings",
@@ -68,7 +70,8 @@
       "daily",
       "interact",
       "library",
-      "governance"
+      "governance",
+      "launcher"
     ],
     "check": [
       "settings",
@@ -78,10 +81,20 @@
     ],
     "repository_checks": [],
     "entry": [
-      "mcp_server",
-      "cli"
+      "launcher"
     ],
     "corpus": [
+      "settings"
+    ],
+    "updates": [
+      "settings"
+    ],
+    "launcher": [
+      "settings",
+      "updates",
+      "mcp_bridge"
+    ],
+    "mcp_bridge": [
       "settings"
     ]
   },
@@ -101,7 +114,8 @@
       "browser"
     ],
     "urllib.request": [
-      "browser"
+      "browser",
+      "updates"
     ],
     "http.client": [
       "browser"
@@ -133,7 +147,9 @@
       "check",
       "repository_checks",
       "secure",
-      "governance"
+      "governance",
+      "updates",
+      "mcp_bridge"
     ]
   },
   "public_tools": [
@@ -215,7 +231,10 @@
     "entry.py": "安装版入口：pip / uvx 装好后的两个命令；启动前恢复平铺布局，不含任何业务逻辑",
     "pyproject.toml": "PyPI 打包元数据：包名、版本、依赖锁定、入口命令、目录映射；依赖与入口以本文件和 settings 为准",
     "server.json": "MCP 官方目录的登记条目：名字、版本、PyPI 包；版本必须与 pyproject.toml 一致",
-    "corpus.py": "离线语料提取、来源校验、文案选择与近似重复判定；不联网、不提交站点"
+    "corpus.py": "离线语料提取、来源校验、文案选择与近似重复判定；不联网、不提交站点",
+    "updates.py": "唯一软件更新来源、CI 准入、独立版本及依赖环境准备和原子激活；不访问论坛",
+    "launcher.py": "稳定启动入口，更新检查后以新解释器执行 CLI 或常驻 MCP 代理",
+    "mcp_bridge.py": "保持 MCP 连接和请求生命周期，在调用间隙替换后台版本，不重放业务调用"
   },
   "ci": {
     "tests": {
@@ -254,12 +273,14 @@
         "tests/test_window_parking.py",
         "tests/test_packaging.py",
         "tests/test_daily_journal.py",
-        "tests/test_corpus.py"
+        "tests/test_corpus.py",
+        "tests/test_updates.py"
       ],
       "integration": [
         "tests/test_mcp_integration.py",
         "tests/test_reader_integration.py",
-        "tests/test_access_recovery_integration.py"
+        "tests/test_access_recovery_integration.py",
+        "tests/test_update_bridge_integration.py"
       ]
     }
   },

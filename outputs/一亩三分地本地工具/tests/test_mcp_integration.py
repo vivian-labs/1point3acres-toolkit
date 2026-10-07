@@ -37,7 +37,9 @@ class MCPIntegrationTests(unittest.TestCase):
             self.assertFalse((workspace / 'work/local-toolkit-state/account.json').exists())
 
             async def exercise():
-                parameters = StdioServerParameters(command=sys.executable, args=[str(package / 'mcp_server.py')], cwd=str(package))
+                # Exercise the real stable bridge + SDK worker, without any update or forum network access.
+                parameters = StdioServerParameters(command=sys.executable,
+                    args=[str(package / 'launcher.py'), 'mcp', '--offline'], cwd=str(package))
                 async with Client(parameters) as client:
                     listed = await client.list_tools()
                     tools = listed.tools if hasattr(listed, 'tools') else listed
