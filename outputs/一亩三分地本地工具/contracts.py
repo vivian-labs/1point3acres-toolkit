@@ -158,8 +158,8 @@ class Action:
     reward_title: str
 
 
-ACTIONS = (Action('checkin', 'checkin', 'daily-checkin', 'reward.checkin', '签到奖励'),
-           Action('quiz', 'question', 'daily-question', 'dailyQuestion.answer', '每日答题'))
+CHECKIN = Action('checkin', 'checkin', 'daily-checkin', 'reward.checkin', '签到奖励')
+ACTIONS = (CHECKIN, Action('quiz', 'question', 'daily-question', 'dailyQuestion.answer', '每日答题'))
 REWARD_TITLES = frozenset(action.reward_title for action in ACTIONS)
 
 
@@ -199,6 +199,7 @@ def daily_history_record(result):
             error = 'daily_run_failed'
     return {'run_id': result['run_id'], 'started_at': result['started_at'],
             'finished_at': result['finished_at'], 'site_day': result['site_day'],
+            **({'checkin_only': True} if result.get('checkin_only') else {}),
             'status_only': result.get('status_only') if type(result.get('status_only')) is bool else None,
             'status': RunStatus(result['status']),
             'actions': actions, 'error': error,

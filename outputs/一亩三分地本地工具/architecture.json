@@ -61,7 +61,8 @@
       "library",
       "secure",
       "governance",
-      "launcher"
+      "launcher",
+      "accounts"
     ],
     "mcp_server": [
       "settings",
@@ -71,7 +72,8 @@
       "interact",
       "library",
       "governance",
-      "launcher"
+      "launcher",
+      "accounts"
     ],
     "check": [
       "settings",
@@ -96,6 +98,13 @@
     ],
     "mcp_bridge": [
       "settings"
+    ],
+    "accounts": [
+      "settings",
+      "contracts",
+      "rules",
+      "browser",
+      "daily"
     ]
   },
   "assets": [
@@ -149,7 +158,8 @@
       "secure",
       "governance",
       "updates",
-      "mcp_bridge"
+      "mcp_bridge",
+      "accounts"
     ]
   },
   "public_tools": [
@@ -164,6 +174,7 @@
     "reply_to_notification",
     "react_to_notification",
     "daily_run",
+    "checkin_all_accounts",
     "stripe_collect",
     "collect_company",
     "create_collection_task",
@@ -234,7 +245,8 @@
     "corpus.py": "离线语料提取、来源校验、文案选择与近似重复判定；不联网、不提交站点",
     "updates.py": "唯一软件更新来源、CI 准入、独立版本及依赖环境准备和原子激活；不访问论坛",
     "launcher.py": "稳定启动入口，更新检查后以新解释器执行 CLI 或常驻 MCP 代理",
-    "mcp_bridge.py": "保持 MCP 连接和请求生命周期，在调用间隙替换后台版本，不重放业务调用"
+    "mcp_bridge.py": "保持 MCP 连接和请求生命周期，在调用间隙替换后台版本，不重放业务调用",
+    "accounts.py": "多账号登记、按 UID 隔离进程、汇总签到结果"
   },
   "ci": {
     "tests": {
@@ -274,7 +286,8 @@
         "tests/test_packaging.py",
         "tests/test_daily_journal.py",
         "tests/test_corpus.py",
-        "tests/test_updates.py"
+        "tests/test_updates.py",
+        "tests/test_accounts.py"
       ],
       "integration": [
         "tests/test_mcp_integration.py",

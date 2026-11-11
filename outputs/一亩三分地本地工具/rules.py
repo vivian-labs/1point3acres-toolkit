@@ -63,7 +63,7 @@ def daily_retry_due(records):
     """Newest first, current site day only. Persisted finish times survive scheduler restarts."""
     failed = []
     for record in records:
-        if record.get('status_only') is True:
+        if record.get('status_only') is True or record.get('checkin_only'):
             continue
         if record['status'] == RunStatus.COMPLETE:
             break

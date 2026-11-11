@@ -9,6 +9,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import StrictBool, StrictInt, StrictStr
+from accounts import checkin_all
 from daily import run_daily, resume_daily
 from browser import (get_unread_counts as read_unread_counts, session_status as inspect_session, session_login as restore_session,
                      session_logout as reset_session)
@@ -32,6 +33,7 @@ class ToolkitServer(MCPServer):
                    'search_threads': (search_threads, 'unsupported_search_arguments'),
                    'session_status': (session_status, 'unsupported_session_arguments'),
                    'daily_history': (daily_history, 'unsupported_history_arguments'),
+                   'checkin_all_accounts': (checkin_all_accounts, 'unsupported_checkin_arguments'),
                    'daily_run': (daily_run, 'unsupported_daily_arguments'),
                    'session_login': (session_login, 'unsupported_login_arguments'),
                    'session_logout': (session_logout, 'unsupported_logout_arguments')}
@@ -118,6 +120,12 @@ def daily_run(answer: str | None = None, question: str | None = None, resume: St
     """执行每日签到和答题并核验大米。未知题目返回 answer_needed；补充答案时必须同时传入完整题目。resume=true按当前站点日补执行：未到时间或历史已确认完成时离线结束，否则返回attempts中的实际运行；网络/验证失败最多再试一次。不接受历史日期或强制重交参数。"""
     return tool_result(resume_daily(answer, question) if resume else
                        run_daily(supplied_answer=answer, expected_question=question))
+
+
+@server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def checkin_all_accounts() -> CallToolResult:
+    """给本机登记的所有账号并行签到，包含原有默认账号。按 UID 返回签到和奖励核验结果。仅执行签到，每日答题由 daily_run 处理。"""
+    return tool_result(checkin_all())
 
 
 @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))
