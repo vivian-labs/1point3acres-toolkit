@@ -216,6 +216,25 @@ work\cf-probe-venv\Scripts\python.exe -c "import json,getpass;a=json.load(open('
 
 成功返回 `status=complete`，`credential_storage` 为 `macos_keychain` 或 `windows_dpapi`。改过论坛密码就重跑这一段。微信注册的账号先在网站或公众号设置一个登录密码再用。
 
+<a id="multi-account"></a>
+
+### 多账号签到
+
+已有的默认账号自动参加。每个额外账号登记一次，然后用该账号完成微信扫码登录。在本工具目录运行以下命令，将示例 UID 和用户名换成论坛个人主页上的实际值。
+
+```sh
+./运行.sh account-add 123456 "论坛用户名"
+./运行.sh account-login 123456
+./运行.sh checkin-all
+```
+
+Windows 用 `运行.cmd`，安装版用 `1point3acres-toolkit-cli`。在尚未发布的源码版本上运行时，macOS 可先在当前终端执行 `export ONEPOINT3ACRES_AUTO_UPDATE=0`，Windows PowerShell 可执行 `$env:ONEPOINT3ACRES_AUTO_UPDATE='0'`。这样命令会直接运行当前工作区的代码。MCP 的批量签到工具是 `checkin_all_accounts`。
+
+- `account-login` 默认显示微信二维码。会话过期后可针对该 UID 再次登录。已为该账号配置本机凭据时也可使用 `--method password`。
+- `checkin-all` 每批最多同时运行两个账号，其余排队。每个账号先核对登录身份，再核对当天的签到状态和大米奖励。结果按 UID 返回，`reward_verified` 表示是否查到奖励凭据。有账号失败或需要核实时，整批退出码为 2，其他账号的结果照常返回。
+- 新账号数据在主状态目录的 `accounts/<UID>/` 下，内含独立的 `chrome-profile/` 和 `state/`。新账号默认签到时留空“说说”，可在它自己的 `state/account.json` 调整 `checkin_mood_random`。默认账号继续使用已有配置。
+- 批量命令只执行签到。现有 `daily --resume` 计划仍按默认账号的配置运行签到和答题。要定时为多个账号签到，可让系统定时任务每天执行一次 `checkin-all`。
+
 <a id="first-run"></a>
 
 ## 首次运行

@@ -6,6 +6,7 @@ if __name__ == '__main__' and os.environ.get('ONEPOINT3ACRES_UPDATE_WORKER') != 
     from launcher import main as launch
     raise SystemExit(launch(['cli', *sys.argv[1:]]))
 from pathlib import Path
+from accounts import add_account, checkin_all, login_account
 from daily import run_daily, resume_daily
 from browser import session_status, session_login, session_logout, get_unread_counts
 from interact import (set_favorite, set_reaction, create_thread, reply_thread, list_notifications, reply_to_notification,
@@ -15,7 +16,7 @@ from library import (Library, collect_stripe, export_library, get_thread_detail,
                      collect_company, organize_thread, create_collection_task, run_task, task_status,
                      control_task, list_tasks, archive_media, recognize_media)
 from settings import (INSTALLED, COLLECT_COMPANY, COLLECT_LIMIT, LIST_PAGES, SEARCH_LIMIT, THREAD_PAGES, SITE_SEARCH_LIMIT,
-                      LOGIN_METHOD, WECHAT_LOGIN_TIMEOUT, HISTORY_LIMIT, BOARD_LIMIT, LIKE_REACTION_ID, TASK_LIST_LIMIT, MEDIA_MAX_PER_THREAD,
+                      LOGIN_METHOD, LOGIN_METHODS, WECHAT_LOGIN_TIMEOUT, HISTORY_LIMIT, BOARD_LIMIT, LIKE_REACTION_ID, TASK_LIST_LIMIT, MEDIA_MAX_PER_THREAD,
                       OCR_MAX_IMAGES, NOTIFICATION_KINDS, NOTIFICATION_LIMIT)
 from contracts import RunStatus, is_failure, health_alerting, format_error
 from governance import runtime_info
@@ -42,6 +43,13 @@ def main():
     login.add_argument('--method', default=LOGIN_METHOD, help='password 或 wechat；其他值不启动浏览器直接拒绝')
     login.add_argument('--wait', type=int, default=WECHAT_LOGIN_TIMEOUT, help='仅 wechat：等待微信确认的秒数上限')
     login.add_argument('--qr-path', help='仅 wechat：把二维码页截图写到这个文件（默认在本机状态目录），调用结束即删除')
+    add = commands.add_parser('account-add', help='登记一个独立签到账号')
+    add.add_argument('uid', type=int)
+    add.add_argument('username')
+    account_login = commands.add_parser('account-login', help='登录指定 UID 的专用浏览器')
+    account_login.add_argument('uid', type=int)
+    account_login.add_argument('--method', choices=LOGIN_METHODS, default='wechat')
+    commands.add_parser('checkin-all', help='为所有已配置账号并行签到，逐个核验签到奖励')
     daily = commands.add_parser('daily')
     daily.add_argument('--answer')
     daily.add_argument('--question')
@@ -159,6 +167,12 @@ def main():
         backend = save_credentials(value['username'], value['password'])
         value = None
         result = {'status': RunStatus.COMPLETE, 'credential_storage': backend}
+    elif args.command == 'account-add':
+        result = add_account(args.uid, args.username)
+    elif args.command == 'account-login':
+        result = login_account(args.uid, args.method)
+    elif args.command == 'checkin-all':
+        result = checkin_all()
     elif args.command == 'info':
         result = runtime_info()
     elif args.command == 'daily-history':

@@ -11,7 +11,7 @@ from settings import (ROOT, SITE, STATE, SUBMISSION_TIMEOUT, ACCOUNT_UID,
                       DATABASE_NAME, DAILY_RETRY_LIMIT, DAILY_RUN_TIMEOUT, LEARNED_ANSWERS_NAME, CHECKIN_MOOD_RANDOM,
                       CHECKIN_MOOD_DEFAULT, MOOD_PHRASES_FILE, MOOD_PHRASE_RECENT_DAYS, QUIZ_GAP_SECONDS,
                       JOURNAL_CORPUS_FILE)
-from contracts import (ACTIONS, REWARD_TITLES, ActionStatus, RunStatus, format_error, recovery_summary,
+from contracts import (ACTIONS, CHECKIN, REWARD_TITLES, ActionStatus, RunStatus, format_error, recovery_summary,
                        ResumeDecision, DAILY_RETRY_ERRORS, day_complete)
 from rules import (choose_answer, choose_mood, choose_phrase, load_mood_phrases, site_day, verify_reward,
                    draw_daily_due_at, make_quiz_gap)
@@ -166,10 +166,13 @@ def resume_daily(supplied_answer=None, expected_question=None):
 
 
 def run_daily(status_only=False, supplied_answer=None, expected_question=None, *, _expected_day=None,
-              retry_quiz=None, retry_day=None, retry_uid=None):
+              retry_quiz=None, retry_day=None, retry_uid=None, checkin_only=False):
+    actions = (CHECKIN,) if checkin_only else ACTIONS
     started = datetime.now(timezone.utc)
     result = {'run_id': uuid4().hex, 'started_at': started.isoformat(), 'site_day': site_day(started),
               'status_only': status_only, 'actions': []}
+    if checkin_only:
+        result['checkin_only'] = True
     browser = None
     submission_checks = 0
     missing_responses = set()
@@ -177,7 +180,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
 
     def note_checkin(account):
         nonlocal quiz_gap
-        if not status_only and not account['app_status'].get('question'):
+        if not checkin_only and not status_only and not account['app_status'].get('question'):
             quiz_gap = _daily_plan(result['site_day'], 'quiz_gap',
                                    lambda: make_quiz_gap(datetime.now(timezone.utc)))
             result['quiz_gap'] = quiz_gap
@@ -246,9 +249,10 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                 raise RuntimeError('invalid_quiz_recovery')
         if _expected_day is not None and result['site_day'] != _expected_day:
             raise RuntimeError('site_day_changed')
-        learned = load_learned_answers(STATE / LEARNED_ANSWERS_NAME)
-        # Proven on this account beats a third-party snapshot, so learned entries win.
-        bank = json.loads((ROOT / 'answers.json').read_text(encoding='utf-8')) | learned['verified']
+        if not checkin_only:
+            learned = load_learned_answers(STATE / LEARNED_ANSWERS_NAME)
+            # Proven on this account beats a third-party snapshot.
+            bank = json.loads((ROOT / 'answers.json').read_text(encoding='utf-8')) | learned['verified']
         browser = Browser(deadline=DAILY_RUN_TIMEOUT)
         with browser:
             history = _day_history(result['site_day'])
@@ -265,7 +269,7 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
                 result['reward_verified'] = {
                     'quiz': verify_reward(before['uid'], 'quiz', logs, now=started)}
             asked = answered = None
-            for action_spec in ACTIONS:
+            for action_spec in actions:
                 action, flag, route = action_spec.key, action_spec.flag, action_spec.route
                 account = read_account()
                 prior = previous.get(action, {})
@@ -377,20 +381,20 @@ def run_daily(status_only=False, supplied_answer=None, expected_question=None, *
             result['business_posts_observed'] = sum(row['path'] in ['/trpc/' + action.method for action in ACTIONS] for row in browser.responses)
             result['reward_verified'] = {action.key: bool(previous.get(action.key, {}).get('reward_verified')
                 or result.get('reward_verified', {}).get(action.key)
-                or verify_reward(result['after']['uid'], action.key, result['reward_logs'], now=started)) for action in ACTIONS}
+                or verify_reward(result['after']['uid'], action.key, result['reward_logs'], now=started)) for action in actions}
             for entry in result['actions']:
                 if entry['status'] == ActionStatus.SUBMISSION_UNCONFIRMED:
                     observe_submission(entry, result['after'], result['reward_logs'])
-            result['status'] = RunStatus.COMPLETE if (all(result['after']['app_status'].get(action.flag) for action in ACTIONS) and all(result['reward_verified'].values())) else RunStatus.NEEDS_ATTENTION
+            result['status'] = RunStatus.COMPLETE if (all(result['after']['app_status'].get(action.flag) for action in actions) and all(result['reward_verified'].values())) else RunStatus.NEEDS_ATTENTION
             pending = next((row for row in result['actions'] if row['status'] == ActionStatus.SUBMISSION_UNCONFIRMED), None)
-            unconfirmed_response = next((spec.key for spec in ACTIONS if spec.key in missing_responses
+            unconfirmed_response = next((spec.key for spec in actions if spec.key in missing_responses
                                           and not result['after']['app_status'].get(spec.flag)), None)
             if pending:
                 result.update(status=RunStatus.FAILED, error=pending['action'] + '_submission_unconfirmed')
             elif unconfirmed_response:
                 result.update(status=RunStatus.FAILED, error=unconfirmed_response + '_submission_unconfirmed')
             elif any(not result['after']['app_status'].get(action.flag) and
-                     (previous.get(action.key, {}).get('completed') or result['reward_verified'][action.key]) for action in ACTIONS):
+                     (previous.get(action.key, {}).get('completed') or result['reward_verified'][action.key]) for action in actions):
                 result['error'] = 'daily_history_conflict'
     except Exception as error:
         result['status'] = RunStatus.FAILED
